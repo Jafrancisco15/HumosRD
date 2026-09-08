@@ -2,6 +2,8 @@ import {distance, trajectory} from './core.js';
 import {limitedFetch} from './request-limit.js';
 import {frameSlots, trackSmoke, rankOrigins, observedPlaces, STEP, summarizeLocality, observationVerdict} from './smoke-core.js';
 
+const WIND_RECENT_DAYS=10;
+
 export function initAutomatic({map, places, rd, inputRD, showImagery}) {
   const $=id=>document.getElementById(id);
   const masks=L.layerGroup().addTo(map), paths=L.layerGroup().addTo(map), forecasts=L.layerGroup().addTo(map),localArea=L.layerGroup().addTo(map);
@@ -36,7 +38,7 @@ export function initAutomatic({map, places, rd, inputRD, showImagery}) {
   }
   $('locality-focus').onchange=()=>{localSummary();if(frames.length)localFrame(frames[Number($('auto-time').value)]);const site=places.find(p=>p[0]===$('locality-focus').value);if(site)map.setView(site.slice(1),11);};
   for(const id of ['auto-start','auto-end']) {
-    $(id).max=inputRD(Date.now());$(id).min=inputRD(Date.now()-8*86400000);
+    $(id).max=inputRD(Date.now());
     $(id).addEventListener('change',resetResults);
   }
   function pause(){clearInterval(timer);timer=null;$('auto-play').textContent='Reproducir';}
@@ -79,26 +81,32 @@ export function initAutomatic({map, places, rd, inputRD, showImagery}) {
     cancel();const token=run;controller=new AbortController();const signal=controller.signal;
     const begin=Date.parse($('auto-start').value+'-04:00'),end=Date.parse($('auto-end').value+'-04:00');
     let slots;
-    try{slots=frameSlots(begin,end);if(begin<Date.now()-8*86400000||end>Date.now())throw new Error('Selecciona fechas de los últimos 8 días, sin horas futuras.');}
+    try{slots=frameSlots(begin,end);if(end>Date.now())throw new Error('Selecciona una fecha pasada; no se permiten horas futuras.');}
     catch(error){$('auto-status').textContent=error.message;return;}
+    const historical=end<Date.now()-10*86400000;
     frames=[];tracks=[];masks.clearLayers();paths.clearLayers();forecasts.clearLayers();localArea.clearLayers();$('auto-results').replaceChildren();$('communities').replaceChildren();$('auto-timeline').hidden=true;$('local-frame').textContent='';$('local-coverage').textContent='Evaluando cobertura local…';
-    $('auto-analyze').disabled=true;$('auto-cancel').hidden=false;$('community-status').textContent='Esperando detecciones del intervalo…';$('auto-status').textContent=`Consultando ${slots.length} escenas y focos térmicos…`;
+    $('auto-analyze').disabled=true;$('auto-cancel').hidden=false;$('community-status').textContent='Esperando detecciones del intervalo…';$('auto-status').textContent=`${historical?'Modo histórico · ':''}Consultando ${slots.length} escenas NOAA${historical?' archivadas':' y fuentes recientes'}…`;
     let next=0,done=0;
     const collected=new Array(slots.length), allFires=[], fireIssues=[];
     const dates=new Set();
-    for(let t=Math.max(begin-3*3600000,Date.now()-8*86400000);t<=end;t+=3600000)dates.add(inputRD(t).slice(0,10));
+    for(let t=begin-3*3600000;t<=end;t+=3600000)dates.add(inputRD(t).slice(0,10));
     dates.add(inputRD(end).slice(0,10));
+    let firmsHistorical=false;
     const fireTask=(async()=>{
       for(const date of dates){
         if(signal.aborted)return;
-        try{const data=await json(`/api/fires?date=${date}`,signal,25000);allFires.push(...data.fires);if(data.partial)fireIssues.push(`${date}: FIRMS parcial`);}
+        try{
+          const data=await json(`/api/fires?date=${date}`,signal,25000);
+          if(data.historicalUnavailable){if(!firmsHistorical)fireIssues.push(`FIRMS NRT fuera de su ventana histórica (${data.windowDays||9} días); no se usa para descartar fuentes en este intervalo.`);firmsHistorical=true;continue;}
+          allFires.push(...data.fires);if(data.partial)fireIssues.push(`${date}: FIRMS parcial`);
+        }
         catch(error){if(!signal.aborted)fireIssues.push(`${date}: ${error.message}`);}
       }
     })();
     async function worker(){
       while(next<slots.length&&!signal.aborted){
         const index=next++,time=new Date(slots[index]).toISOString();
-        try{const data=await json(`/api/smoke?time=${encodeURIComponent(time)}&v=3`,signal);collected[index]=data.status==='ok'?data:{...data,requestedAt:time};}
+        try{const data=await json(`/api/smoke?time=${encodeURIComponent(time)}&v=4`,signal);collected[index]=data.status==='ok'?data:{...data,requestedAt:time};}
         catch(error){if(signal.aborted)return;collected[index]={status:'unavailable',requestedAt:time,reason:error.message};}
         done++;if(token===run)$('auto-status').textContent=`Procesando escenas NOAA: ${done}/${slots.length}. Buscando humo, cobertura y continuidad temporal…`;
       }
@@ -107,7 +115,7 @@ export function initAutomatic({map, places, rd, inputRD, showImagery}) {
     frames=collected;tracks=trackSmoke(frames);
     const valid=frames.filter(f=>f.status==='ok'),usable=valid.filter(f=>f.coverage.usablePixels>0),missing=frames.length-valid.length;
     const coverage=valid.reduce((sum,f)=>sum+f.coverage.usableFraction,0)/frames.length;
-    $('auto-status').textContent=`${observationVerdict(frames)} ${rd(begin)}–${rd(end)} RD · ${valid.length}/${frames.length} escenas procesadas; ${usable.length} con superficie observable. Cobertura espacio-tiempo útil: ${Math.round(coverage*100)}%. ${tracks.length?`${tracks.length} secuencias de humo alta/media.`:''}${missing?` ${missing} escenas faltantes.`:''}`;
+    $('auto-status').textContent=`${historical?'MODO HISTÓRICO · ':''}${observationVerdict(frames)} ${rd(begin)}–${rd(end)} RD · ${valid.length}/${frames.length} escenas procesadas; ${usable.length} con superficie observable. Cobertura espacio-tiempo útil: ${Math.round(coverage*100)}%. ${tracks.length?`${tracks.length} secuencias de humo alta/media.`:''}${missing?` ${missing} escenas faltantes.`:''}`;
     localSummary();
     const results=$('auto-results');
     if(fireIssues.length)textBlock(results,'Procedencia limitada: '+fireIssues.join(' · '));
@@ -127,15 +135,16 @@ export function initAutomatic({map, places, rd, inputRD, showImagery}) {
       if(candidates.length){
         textBlock(card,'Origen candidato, confianza baja: focos previos a la primera detección, cercanos y dentro del cono aguas arriba del movimiento observado. No es una atribución confirmada.','fine');
         for(const f of candidates){textBlock(card,`${f.sensor} · ${rd(f.at)} RD · ${f.gap.toFixed(1)} km de la primera huella · ${f.lat.toFixed(4)}, ${f.lon.toFixed(4)}`,'fine');sourceMarkers.push(f);}
-      }else textBlock(card,'Origen no resuelto: faltan focos compatibles o movimiento suficiente. La primera huella no se presenta como punto de emisión.','fine');
+      }else textBlock(card,firmsHistorical?'Origen no resuelto: FIRMS NRT no cubre esta fecha histórica y la primera huella no se presenta como punto de emisión.':'Origen no resuelto: faltan focos compatibles o movimiento suficiente. La primera huella no se presenta como punto de emisión.','fine');
       const button=document.createElement('button');button.textContent='Ver primera detección';button.onclick=()=>{pause();frameAt(frames.findIndex(f=>Date.parse(f.at)===first.at));map.setView(first.center,10);};card.append(button);results.append(card);
     }
     $('auto-timeline').hidden=false;$('auto-time').max=frames.length-1;
     const firstSmoke=frames.findIndex(f=>f.status==='ok'&&f.components.length);frameAt(firstSmoke>=0?firstSmoke:frames.length-1);
     const latestSlot=slots.at(-1),active=tracks.filter(t=>t.samples.at(-1).at>=latestSlot).sort((a,b)=>b.samples.at(-1).areaKm2-a.samples.at(-1).areaKm2);
-    $('community-status').textContent=`${seen.size} localidades con humo detectado sobre su punto de referencia. ${active.length?'Calculando escenarios de transporte desde la última escena…':'Sin plumas observables en la última escena para proyectar. No equivale a ausencia de riesgo.'}`;
+    const windRecent=latestSlot>=Date.now()-WIND_RECENT_DAYS*86400000;
+    $('community-status').textContent=`${seen.size} localidades con humo detectado sobre su punto de referencia. ${active.length?(windRecent?'Calculando escenarios de transporte desde la última escena…':`Análisis histórico: no se calcula viento con la ventana reciente de ${WIND_RECENT_DAYS} días.`):'Sin plumas observables en la última escena para proyectar. No equivale a ausencia de riesgo.'}`;
     let projected=0,windFailures=0;
-    for(const track of active.slice(0,5)){
+    if(windRecent)for(const track of active.slice(0,5)){
       if(signal.aborted)return;
       const last=track.samples.at(-1),[lat,lon]=last.center;
       try{
@@ -155,9 +164,12 @@ export function initAutomatic({map, places, rd, inputRD, showImagery}) {
     }
     if(token!==run)return;
     for(const f of sourceMarkers)L.circleMarker([f.lat,f.lon],{radius:8,color:'#ff9d5c',fillOpacity:.5}).bindTooltip(`Fuente candidata FIRMS · ${rd(f.at)} RD · confianza baja`).addTo(forecasts);
-    $('community-status').textContent=usable.length?`${seen.size} localidades con humo detectado sobre su punto de referencia. ${projected} plumas con escenario de 3 h desde la última escena. ${active.length>5?'Se priorizan las 5 plumas de mayor huella. ':''}${windFailures?'Existen fallos del proveedor de viento. ':''}No es un índice de calidad del aire ni una alerta oficial; las horas indicadas corresponden al intervalo analizado.`:'VIGILANCIA SATELITAL SIN COBERTURA ÚTIL. No es posible evaluar la exposición de las comunidades ni proyectar una pluma observada. Los reportes en tierra deben mantenerse como evidencia independiente pendiente de contraste.';
+    if(usable.length){
+      const transport=active.length?(windRecent?`${projected} plumas con escenario de 3 h desde la última escena. ${active.length>5?'Se priorizan las 5 plumas de mayor huella. ':''}${windFailures?'Existen fallos del proveedor de viento. ':''}`:`Modo histórico: sin escenario de viento porque la fecha queda fuera de la ventana reciente de ${WIND_RECENT_DAYS} días. `):'Sin plumas observables en la última escena para proyectar. ';
+      $('community-status').textContent=`${seen.size} localidades con humo detectado sobre su punto de referencia. ${transport}No es un índice de calidad del aire ni una alerta oficial; las horas indicadas corresponden al intervalo analizado.`;
+    }else $('community-status').textContent='VIGILANCIA SATELITAL SIN COBERTURA ÚTIL. No es posible evaluar la exposición de las comunidades ni proyectar una pluma observada. Los reportes en tierra deben mantenerse como evidencia independiente pendiente de contraste.';
     const download=document.createElement('button');download.textContent='Descargar análisis y fuentes (JSON)';
-    download.onclick=()=>{const blob=new Blob([JSON.stringify({generatedAt:new Date().toISOString(),begin:new Date(begin).toISOString(),end:new Date(end).toISOString(),timeZone:'America/Santo_Domingo',method:'GOES Enterprise ADP observability + Top-2 smoke masks + experimental centroid tracking + FIRMS upstream cone; not validated source attribution',frames,tracks,fires:allFires,fireIssues},null,2)],{type:'application/json'});const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='humosrd-analisis.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};results.append(download);
+    download.onclick=()=>{const blob=new Blob([JSON.stringify({generatedAt:new Date().toISOString(),begin:new Date(begin).toISOString(),end:new Date(end).toISOString(),timeZone:'America/Santo_Domingo',mode:historical?'historical':'recent',method:'GOES Enterprise ADP observability + Top-2 smoke masks + experimental centroid tracking + FIRMS upstream cone when NRT is available; not validated source attribution',frames,tracks,fires:allFires,fireIssues},null,2)],{type:'application/json'});const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='humosrd-analisis.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};results.append(download);
     $('auto-analyze').disabled=false;$('auto-cancel').hidden=true;
   }
   $('auto-analyze').onclick=()=>analyze().catch(error=>{cancel();$('auto-status').textContent=`No se pudo completar el análisis: ${error.message}`;});

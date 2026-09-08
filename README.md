@@ -1,6 +1,6 @@
 # HUMOSRD
 
-Análisis experimental de humo en Santo Domingo: clasificación operativa NOAA GOES-19 ADP, seguimiento entre escenas, fuentes candidatas NASA FIRMS, imágenes NASA GIBS y vigilancia hacia comunidades. Hasta 24 h de los últimos 8 días; hora America/Santo_Domingo (UTC−4). No requiere seleccionar un origen.
+Análisis experimental de humo en Santo Domingo: clasificación operativa NOAA GOES-19 ADP, seguimiento entre escenas, fuentes candidatas NASA FIRMS, imágenes NASA GIBS y vigilancia hacia comunidades. Cada análisis automático cubre hasta 24 h; puede usar fechas históricas cuando NOAA/GIBS conserven la escena. Hora America/Santo_Domingo (UTC−4). No requiere seleccionar un origen.
 
 ## Desarrollo
 
@@ -12,15 +12,22 @@ Preset Other, build `npm run build`, salida `dist`. Las funciones Node conviven 
 
 Las llamadas `fetch()` de la aplicación pasan por un limitador compartido de máximo dos solicitudes activas a la vez. Esto cubre las API de HumosRD y las consultas de viento iniciadas por JavaScript; las teselas administradas internamente por Leaflet no pasan por ese limitador.
 
+## Reciente vs. histórico
+
+- **Modo reciente:** GOES ADP/GIBS + FIRMS NRT y, cuando corresponde, escenarios de viento. FIRMS se consulta únicamente dentro de su ventana NRT configurada de 9 días.
+- **Modo histórico:** el selector de fecha y el análisis automático no tienen un límite artificial de 8 días. `/api/smoke` consulta directamente el archivo NOAA de la fecha solicitada y GIBS resuelve la imagen publicada disponible. Si la escena no existe —por hueco del proveedor o porque la fecha antecede al archivo de GOES-19— se devuelve `unavailable`, no un falso negativo de humo.
+- En histórico, FIRMS NRT devuelve `historicalUnavailable` en vez de error y no se interpreta como cero incendios. Los escenarios automáticos y las herramientas manuales de viento no se calculan fuera de la ventana reciente del proveedor meteorológico.
+- El intervalo máximo sigue siendo 24 h para controlar costo y tiempo de procesamiento; la antigüedad de la fecha ya no limita el análisis satelital.
+
 ## Flujo
 
 - `/api/imagery` resuelve intervalos publicados en WMTS. VIIRS/MODIS `.jpeg` y GOES `.png`. Al abrir muestra la última escena con su hora real. Fondo Esri de archivo identificado y errores de teselas parciales.
-- `/api/smoke?time=ISO` descarga ADPF GOES-19 de NOAA, georreferencia y devuelve GeoJSON, componentes, huella km², cobertura, diagnóstico por localidad y fuente original.
+- `/api/smoke?time=ISO` descarga ADPF GOES-19 de NOAA para la fecha solicitada, georreferencia y devuelve GeoJSON, componentes, huella km², cobertura, diagnóstico por localidad y fuente original. Solo rechaza fechas futuras; las fechas antiguas se consultan contra el archivo.
 - La observabilidad ADP se calcula separada de la confianza de detección: Cloud/SnowIce, geometría SZA/VZA mediante `PQI1`, valores válidos de Smoke y estado bad/missing. `DQF` high/medium/low describe la confianza de una detección de humo; no se usa como máscara general de cobertura.
 - La huella principal utiliza humo de confianza alta+media y excluye polvo simultáneo. El humo de baja confianza se conserva como diagnóstico secundario y nunca se mezcla silenciosamente con la huella principal.
 - `smoke-core.js` sigue regiones consecutivas sin conectar huecos, usa posición esperada para estabilizar asociaciones y exige que candidatos FIRMS queden en un cono aguas arriba del movimiento observado.
-- `automatic.js` aporta progreso/cancelación, reproducción sincronizada con GeoColor, comunidades bajo píxeles de humo y cinco escenarios de viento a 80 m para hasta cinco plumas finales. Exportación JSON con fuentes y modelo de calidad.
-- Herramientas manuales de viento/emisiones quedan en apartados secundarios.
+- `automatic.js` aporta progreso/cancelación, reproducción sincronizada con GeoColor, comunidades bajo píxeles de humo y cinco escenarios de viento a 80 m para hasta cinco plumas finales cuando la fecha es reciente. En histórico omite viento/FIRMS NRT sin impedir el análisis NOAA. Exportación JSON con fuentes y modelo de calidad.
+- Herramientas manuales de viento/emisiones quedan en apartados secundarios y conservan su ventana temporal reciente.
 
 ## Caso real: San Luis, 8 de septiembre de 2026
 

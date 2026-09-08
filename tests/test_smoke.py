@@ -36,10 +36,16 @@ class SmokeTests(unittest.TestCase):
     def test_components_do_not_merge_diagonal_pixels(self):
         self.assertEqual(sorted(map(len,components(np.array([[1,1,0],[0,0,1]],dtype=bool)))),[1,2])
 
-    def test_bad_time_rejected_before_network(self):
+    def test_bad_or_future_time_rejected_before_network(self):
         now=datetime(2026,9,8,16,tzinfo=timezone.utc)
-        for value in ["bad", "2026-09-08T14:00", "2026-09-09T14:00Z", "2026-08-01T14:00Z"]:
+        for value in ["bad", "2026-09-08T14:00", "2026-09-09T14:00Z"]:
             with self.assertRaises(RequestError): get_frame(value,now)
+
+    def test_historical_time_is_allowed_and_missing_archive_is_unavailable(self):
+        xml=b'<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"></ListBucketResult>'
+        with patch('api.smoke.read_url',return_value=xml):
+            result=get_frame('2026-08-01T14:00Z',datetime(2026,9,8,16,tzinfo=timezone.utc))
+        self.assertEqual(result['status'],'unavailable');self.assertIn('requestedAt',result)
 
     def test_noaa_missing_is_not_no_smoke(self):
         with patch('api.smoke.read_url',return_value=b'<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"></ListBucketResult>'):

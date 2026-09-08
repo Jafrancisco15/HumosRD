@@ -1,5 +1,5 @@
 """NOAA GOES-19 ADP, cropped to Santo Domingo. No API key required."""
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse, urlencode
 from urllib.request import urlopen
@@ -262,7 +262,7 @@ def get_frame(value, now=None):
     prefix = slot.strftime("ABI-L2-ADPF/%Y/%j/%H/")
     listing = read_url(HOST + "?" + urlencode({"list-type": 2, "prefix": prefix, "max-keys": 100}), 500000)
     keys = [el.text for el in ET.fromstring(listing).iter() if el.tag.endswith("}Key")]
-    keys = [key for key in keys if slot <= key_time(key) < slot + (datetime.min.replace(tzinfo=UTC)-datetime.min.replace(tzinfo=UTC)).replace()]
+    keys = [key for key in keys if slot <= key_time(key) < slot + timedelta(minutes=10)]
     if not keys:
         return {"status": "unavailable", "requestedAt": iso(slot), "reason": "NOAA no publica una escena ADP para esa hora o existe un hueco de observación. En fechas anteriores a la disponibilidad de GOES-19 esto es esperado."}
     key = sorted(keys)[-1]

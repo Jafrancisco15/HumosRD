@@ -1,4 +1,5 @@
 import {distance,trajectory,estimateEmission} from './core.js';
+import {limitedFetch} from './request-limit.js';
 import {initAutomatic} from './automatic.js';
 const $=id=>document.getElementById(id), fmt=n=>new Intl.NumberFormat('es-DO',{maximumFractionDigits:2}).format(n);
 const rd=t=>new Date(t).toLocaleString('es-DO',{timeZone:'America/Santo_Domingo',dateStyle:'short',timeStyle:'short'});
@@ -42,7 +43,7 @@ async function showImagery(options={}) {
   const time=key==='goes'?new Date(localTime).toISOString():`${$('date').value}T00:00:00Z`;
   $('imagery-status').textContent='Comprobando escenas publicadas por NASA…';
   try{
-    const response=await fetch(`/api/imagery?layer=${key}&time=${encodeURIComponent(time)}${options.latest===true?'&latest=true':''}`,{signal:AbortSignal.timeout(25000)});
+    const response=await limitedFetch(`/api/imagery?layer=${key}&time=${encodeURIComponent(time)}${options.latest===true?'&latest=true':''}`,{signal:AbortSignal.timeout(25000)});
     if(!response.headers.get('content-type')?.includes('application/json'))throw new Error('El servicio de imágenes requiere el despliegue actualizado en Vercel.');
     const data=await response.json();if(run!==imageryRun)return;
     if(!response.ok||data.status!=='ok')throw new Error(`${data.error||'Escena no disponible.'}${data.latestBefore?' Última anterior: '+rd(data.latestBefore)+' RD.':''} El fondo visible es una imagen de archivo.`);
@@ -67,11 +68,11 @@ function step(delta){
 async function loadFires(){
   const run=++fireRun;fires=[];firesLayer?.clearLayers();invalidate();$('sources').replaceChildren();$('fires-status').textContent='Consultando VIIRS y MODIS…';
   try{
-    const r=await fetch(`/api/fires?date=${encodeURIComponent($('date').value)}`,{signal:AbortSignal.timeout(25000)});
+    const r=await limitedFetch(`/api/fires?date=${encodeURIComponent($('date').value)}`,{signal:AbortSignal.timeout(25000)});
     if(!(r.headers.get('content-type')||'').includes('application/json'))throw new Error('Los focos automáticos necesitan el servidor de Vercel y FIRMS_MAP_KEY.');
     const data=await r.json();if(!r.ok)throw new Error(data.error||'No se pudieron consultar los focos.');if(run!==fireRun)return;
     fires=data.fires;
-    $('fires-status').textContent=`${fires.length} detecciones en el área regional · día local ${data.date} RD${data.partial?' · COBERTURA PARCIAL':''}. Consulta: ${rd(Date.parse(data.fetchedAt))} RD. No equivale a número de incendios.`;
+    $('fires-status').textContent=fires.length?`${fires.length} detecciones en el área regional · día local ${data.date} RD${data.partial?' · COBERTURA PARCIAL':''}. Consulta: ${rd(Date.parse(data.fetchedAt))} RD. No equivale a número de incendios.`:`0 focos térmicos detectados · día local ${data.date} RD${data.partial?' · COBERTURA PARCIAL':''}. Esto no descarta una quema pequeña, de combustión lenta, cubierta o ocurrida entre pasadas de VIIRS/MODIS.`;
     for(const s of data.sources){const el=document.createElement('div');el.textContent=`${s.sensor.replace('_NRT','')}: ${s.status==='ok'?'consultado':s.status==='partial'?'cobertura parcial':'no disponible'}`;$('sources').append(el);}
     for(const f of fires){
       const marker=L.circleMarker([f.lat,f.lon],{radius:6,color:'#ffba75',weight:1,fillColor:'#ff812d',fillOpacity:.8,bubblingMouseEvents:false});
@@ -101,7 +102,7 @@ async function analyze(){
   $('analyze').disabled=true;$('analysis-status').textContent='Consultando viento horario y calculando…';
   try{
     const vars=`wind_speed_${level},wind_direction_${level}`;
-    const r=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${p[0].toFixed(3)}&longitude=${p[1].toFixed(3)}&hourly=${vars}&wind_speed_unit=ms&past_days=10&forecast_days=3&timeformat=unixtime&timezone=UTC`,{signal:AbortSignal.timeout(20000)});
+    const r=await limitedFetch(`https://api.open-meteo.com/v1/forecast?latitude=${p[0].toFixed(3)}&longitude=${p[1].toFixed(3)}&hourly=${vars}&wind_speed_unit=ms&past_days=10&forecast_days=3&timeformat=unixtime&timezone=UTC`,{signal:AbortSignal.timeout(20000)});
     if(!r.ok)throw new Error('No se pudo obtener el viento. No se dibuja una trayectoria sin datos.');
     const data=await r.json();if(run!==analysisRun)return;
     if(!data.hourly?.time?.length)throw new Error('El proveedor devolvió viento incompleto.');
@@ -114,11 +115,7 @@ async function analyze(){
     $('analysis-status').textContent=`${back?'Retrotrayectoria':'Transporte hacia adelante'} · span ${fmt(hours)} h · ${rd(begin)}–${rd(end)} RD · viento a ${level.replace('m',' m')}. Modelo horario en un solo punto, no trayectoria observada del humo.`;
     analysisPath=main;$('analysis-time').max=String(main.points.length-1);$('timeline').hidden=false;setAnalysisTime(0);
     if(back){
-      const candidates=fires.map(f=>{
-        let best=Infinity;
-        main.points.forEach((pt,i)=>{if(f.at>=begin&&f.at<=end&&Math.abs(f.at-main.times[i])<=3*3600000)best=Math.min(best,distance(pt,[f.lat,f.lon]));});
-        return {...f,gap:best};
-      }).filter(f=>f.gap<=10).sort((a,b)=>a.gap-b.gap).slice(0,5);
+      const candidates=fires.map(f=>{let best=Infinity;main.points.forEach((pt,i)=>{if(f.at>=begin&&f.at<=end&&Math.abs(f.at-main.times[i])<=3*3600000)best=Math.min(best,distance(pt,[f.lat,f.lon]));});return {...f,gap:best};}).filter(f=>f.gap<=10).sort((a,b)=>a.gap-b.gap).slice(0,5);
       const title=document.createElement('p');title.className='fine';title.textContent=candidates.length?'Focos a ≤10 km de la trayectoria, con tolerancia temporal de ±3 h. Proximidad no confirma procedencia.':'Sin candidatos coincidentes en las detecciones cargadas. No descarta incendios ni fuentes fuera del área/fecha consultada.';$('candidates').append(title);
       for(const f of candidates){const b=document.createElement('button');b.className='candidate';b.textContent=`${f.sensor.replace('_NRT','')} · ${fmt(f.gap)} km de la trayectoria`;const s=document.createElement('span');s.textContent=`${rd(f.at)} RD · ${f.frp===null?'FRP no disponible':fmt(f.frp)+' MW'} · inspeccionar foco`;b.append(s);b.onclick=()=>{selectPoint([f.lat,f.lon],f);map.setView([f.lat,f.lon],12);};$('candidates').append(b);}
     }
@@ -127,7 +124,7 @@ async function analyze(){
 }
 async function init(){
   if(!window.L){$('map-error').hidden=false;$('map-error').textContent='No se pudo cargar el mapa. Recarga la página; verifica que se haya ejecutado la compilación.';return;}
-  try{const response=await fetch('/localities.json');if(!response.ok)throw new Error();places=await response.json();}
+  try{const response=await limitedFetch('/localities.json');if(!response.ok)throw new Error();places=await response.json();}
   catch{$('map-error').hidden=false;$('map-error').textContent='No se pudo cargar el catálogo de localidades. Recarga para poder analizar las comunidades.';return;}
   map=L.map('map',{zoomControl:true}).setView([18.57,-69.87],10);
   map.createPane('satellite');map.getPane('satellite').style.zIndex=250;
@@ -141,7 +138,7 @@ async function init(){
     marker.bindTooltip(site.name,{permanent:true,direction:'top',className:'landfill-label'}).bindPopup(popup).on('click',()=>selectPoint([site.lat,site.lon],null,site)).addTo(landfillLayer);
   }
   map.on('click',e=>{if($('manual-tools').open)selectPoint([e.latlng.lat,e.latlng.lng]);});
-  fetch('/provinces.geojson').then(r=>{if(!r.ok)throw new Error();return r.json();}).then(data=>L.geoJSON(data,{style:f=>({color:f.properties.shapeName==='Santo Domingo'?'#42b6c2':'#b991e7',weight:2,fillOpacity:.03,dashArray:'5 4'}),onEachFeature:(f,l)=>l.bindTooltip(f.properties.shapeName)}).addTo(boundaryLayer)).catch(()=>{$('map-error').hidden=false;$('map-error').textContent='No se pudieron cargar los límites provinciales.';});
+  limitedFetch('/provinces.geojson').then(r=>{if(!r.ok)throw new Error();return r.json();}).then(data=>L.geoJSON(data,{style:f=>({color:f.properties.shapeName==='Santo Domingo'?'#42b6c2':'#b991e7',weight:2,fillOpacity:.03,dashArray:'5 4'}),onEachFeature:(f,l)=>l.bindTooltip(f.properties.shapeName)}).addTo(boundaryLayer)).catch(()=>{$('map-error').hidden=false;$('map-error').textContent='No se pudieron cargar los límites provinciales.';});
   $('home').onclick=()=>map.fitBounds([[18.32,-70.22],[18.83,-69.48]]);
   $('layer').onchange=showImagery;$('date').onchange=()=>{stop();showImagery();loadFires();};$('time').onchange=()=>{stop();showImagery();};
   $('opacity').oninput=()=>imageLayer?.setOpacity(Number($('opacity').value));

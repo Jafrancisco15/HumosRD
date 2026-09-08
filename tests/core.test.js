@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {trajectory,distance,estimateEmission,parseFirms} from '../dist/core.js';
+const start=Date.parse('2026-09-08T12:00:00Z');
+const hourly={time:[start-3600000,start,start+3600000],wind_speed_80m:[10,10,10],wind_direction_80m:[90,90,90]};
+test('east wind moves smoke west; 10 m/s for one hour is 36 km',()=>{const p=trajectory([18.5,-69.9],start,1,hourly);assert.ok(p.points.at(-1)[1]<-69.9);assert.ok(Math.abs(distance(p.points[0],p.points.at(-1))-36)<.1);});
+test('back trajectory moves east and time decreases',()=>{const p=trajectory([18.5,-69.9],start,1,hourly,'80m',true);assert.ok(p.points.at(-1)[1]>-69.9);assert.equal(p.times.at(-1),start-3600000);});
+test('missing/null wind stops analysis, never invents calm',()=>{assert.throws(()=>trajectory([18.5,-69.9],start,6,hourly));assert.throws(()=>trajectory([18.5,-69.9],start,1,{...hourly,wind_speed_80m:[null,null,null]}));});
+test('emissions units and validation',()=>{const e=estimateEmission(10,60,.4,5,10);assert.equal(e.dryKg,14400);assert.equal(e.pmLowKg,72);assert.equal(e.pmHighKg,144);assert.throws(()=>estimateEmission(0,60,.4,5,10));assert.throws(()=>estimateEmission(10,60,.4,10,5));});
+test('FIRMS UTC, numeric fields, regional filtering, no sum',()=>{const csv='latitude,longitude,frp,confidence,acq_date,acq_time\n18.5,-69.9,12,n,2026-09-08,930\n40,-90,20,h,2026-09-08,930';const f=parseFirms(csv,'VIIRS_SNPP_NRT');assert.equal(f.length,1);assert.equal(f[0].at,Date.parse('2026-09-08T09:30:00Z'));assert.equal(f[0].frp,12);assert.throws(()=>parseFirms('Invalid MAP_KEY','x'));assert.equal(parseFirms('latitude,longitude,frp,confidence,acq_date,acq_time','x').length,0);});

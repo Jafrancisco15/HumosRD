@@ -18,13 +18,52 @@ BBOX = [-70.4, 18.1, -69.2, 19.1]
 UTC = timezone.utc
 
 
+class RequestError(ValueError):
+    """Bad user input. Provider/schema errors must not be reported as HTTP 400."""
+
+
 @lru_cache(maxsize=1)
 def localities():
     return json.loads((Path(__file__).resolve().parent.parent / "dist/localities.json").read_text())
 
 
-def local_coverage(lon, lat, region, usable, detected, smoke, cloud, dust, quality):
-    """Report observability independently from detection, at community scale."""
+def _flag(dqf, attrs, name):
+    meanings = attrs["flag_meanings"]
+    if isinstance(meanings, bytes):
+        meanings = meanings.decode()
+    names = meanings.split()
+    i = names.index(name)  # Fail closed if NOAA changes the documented schema.
+    return (dqf & attrs["flag_masks"][i]) == attrs["flag_values"][i]
+
+
+def smoke_confidence(dqf, attrs):
+    """Decode smoke confidence only; it is not an observability mask."""
+    high = _flag(dqf, attrs, "high_confidence_smoke_detection_qf")
+    medium = _flag(dqf, attrs, "medium_confidence_smoke_detection_qf")
+    low = _flag(dqf, attrs, "low_confidence_smoke_detection_qf")
+    bad = ~(high | medium | low)
+    return {"high": high, "medium": medium, "low": low, "bad": bad}
+
+
+def smoke_quality(dqf, attrs):
+    """Backward-compatible Top-2 (high + medium) smoke-confidence mask."""
+    confidence = smoke_confidence(dqf, attrs)
+    return confidence["high"] | confidence["medium"]
+
+
+def angle_quality(pqi1, dqf=None):
+    """Return invalid SZA/VZA masks for Enterprise ADP; baseline fallback is explicit."""
+    if pqi1 is not None:
+        return (pqi1 & 12) == 12, (pqi1 & 48) == 48, "enterprise"
+    if dqf is None:
+        raise ValueError("El archivo NOAA no contiene PQI1 ni DQF para validar geometría.")
+    invalid = (dqf & 128) == 128
+    return invalid, invalid, "baseline-fallback"
+
+
+def local_coverage(lon, lat, region, observable, detected, low_detected, smoke, cloud, dust,
+                   snow_ice, invalid_sza, invalid_vza, invalid_quality, confidence):
+    """Report observability independently from smoke-detection confidence."""
     geod = Geod(ellps="WGS84")
     result = []
     for name, point_lat, point_lon in localities():
@@ -36,24 +75,44 @@ def local_coverage(lon, lat, region, usable, detected, smoke, cloud, dust, quali
             state = "outside"
         elif cloud[nearest] == 1:
             state = "cloud"
-        elif not quality[nearest] or smoke[nearest] not in (0, 1):
+        elif snow_ice[nearest] == 1:
+            state = "snow_ice"
+        elif invalid_sza[nearest]:
+            state = "invalid_sza"
+        elif invalid_vza[nearest]:
+            state = "invalid_vza"
+        elif invalid_quality[nearest] or smoke[nearest] not in (0, 1):
             state = "invalid_quality"
         elif smoke[nearest] == 1 and dust[nearest] == 1:
             state = "ambiguous"
         elif detected[nearest]:
             state = "smoke"
-        elif usable[nearest]:
+        elif low_detected[nearest]:
+            state = "low_confidence_smoke"
+        elif observable[nearest]:
             state = "no_detection"
         else:
             state = "unavailable"
-        result.append({"name": name, "center": [point_lat, point_lon], "radiusKm": 3,
-                       "totalPixels": count, "usablePixels": int((area & usable).sum()),
-                       "detectedPixels": int((area & detected).sum()), "cloudPixels": int((area & (cloud == 1)).sum()),
-                       "invalidQualityPixels": int((area & ~quality).sum()),
-                       "ambiguousPixels": int((area & (smoke == 1) & (dust == 1)).sum()),
-                       "rawSmokePixels": int((area & (smoke == 1)).sum()),
-                       "usableFraction": round(int((area & usable).sum()) / max(count, 1), 3),
-                       "referenceState": state})
+        result.append({
+            "name": name, "center": [point_lat, point_lon], "radiusKm": 3,
+            "totalPixels": count,
+            "usablePixels": int((area & observable).sum()),
+            "observablePixels": int((area & observable).sum()),
+            "detectedPixels": int((area & detected).sum()),
+            "lowConfidenceDetectedPixels": int((area & low_detected).sum()),
+            "cloudPixels": int((area & (cloud == 1)).sum()),
+            "snowIcePixels": int((area & (snow_ice == 1)).sum()),
+            "invalidSzaPixels": int((area & invalid_sza).sum()),
+            "invalidVzaPixels": int((area & invalid_vza).sum()),
+            "invalidQualityPixels": int((area & invalid_quality).sum()),
+            "ambiguousPixels": int((area & observable & (smoke == 1) & (dust == 1)).sum()),
+            "rawSmokePixels": int((area & observable & (smoke == 1)).sum()),
+            "highConfidenceSmokePixels": int((area & observable & (smoke == 1) & confidence["high"]).sum()),
+            "mediumConfidenceSmokePixels": int((area & observable & (smoke == 1) & confidence["medium"]).sum()),
+            "lowConfidenceSmokePixels": int((area & observable & (smoke == 1) & confidence["low"]).sum()),
+            "usableFraction": round(int((area & observable).sum()) / max(count, 1), 3),
+            "referenceState": state,
+        })
     return result
 
 
@@ -74,18 +133,6 @@ def key_time(key, tag="s"):
     if not value:
         raise ValueError("Fecha NOAA no reconocida.")
     return datetime.strptime(value[1], "%Y%j%H%M%S").replace(tzinfo=UTC)
-
-
-def smoke_quality(dqf, attrs):
-    meanings = attrs["flag_meanings"]
-    if isinstance(meanings, bytes):
-        meanings = meanings.decode()
-    names = meanings.split()
-    accepted = np.zeros(dqf.shape, dtype=bool)
-    for name in ("high_confidence_smoke_detection_qf", "medium_confidence_smoke_detection_qf"):
-        i = names.index(name)  # Fail closed if the provider changes its flag schema.
-        accepted |= (dqf & attrs["flag_masks"][i]) == attrs["flag_values"][i]
-    return accepted
 
 
 def components(mask):
@@ -116,11 +163,12 @@ def decode(body, key):
             sweep = sweep.decode()
         projection = Proj(proj="geos", h=height, lon_0=float(attrs["longitude_of_projection_origin"]),
                           a=float(attrs["semi_major_axis"]), b=float(attrs["semi_minor_axis"]), sweep=sweep)
+
         def axis(name):
             dataset = f[name]
             return dataset[:].astype(float) * dataset.attrs["scale_factor"] + dataset.attrs["add_offset"]
+
         x, y = axis("x"), axis("y")
-        # Densified boundary avoids missing curved projection extrema.
         west, south, east, north = BBOX
         lo = np.concatenate([np.linspace(west, east, 40)] * 2 + [np.full(40, west), np.full(40, east)])
         la = np.concatenate([np.full(40, south), np.full(40, north)] + [np.linspace(south, north, 40)] * 2)
@@ -134,10 +182,21 @@ def decode(body, key):
         lon, lat = projection(gx * height, gy * height, inverse=True)
         region = (lon >= west) & (lon <= east) & (lat >= south) & (lat <= north)
         smoke, cloud, dust = (f[name][ys, xs] for name in ("Smoke", "Cloud", "Dust"))
-        quality = smoke_quality(f["DQF"][ys, xs], f["DQF"].attrs)
-        usable = region & np.isin(smoke, [0, 1]) & (cloud == 0) & quality
-        detected = usable & (smoke == 1) & (dust == 0)
+        snow_ice = f["SnowIce"][ys, xs] if "SnowIce" in f else np.zeros(smoke.shape, dtype=np.int8)
+        dqf = f["DQF"][ys, xs]
+        confidence = smoke_confidence(dqf, f["DQF"].attrs)
+        pqi1 = f["PQI1"][ys, xs] if "PQI1" in f else None
+        invalid_sza, invalid_vza, geometry_schema = angle_quality(pqi1, dqf)
+        invalid_quality = confidence["bad"] | ~np.isin(smoke, [0, 1])
+
+        observable = (region & np.isin(smoke, [0, 1]) & (cloud == 0) & (snow_ice == 0)
+                      & ~invalid_sza & ~invalid_vza & ~invalid_quality)
+        raw_smoke = observable & (smoke == 1)
+        top2 = confidence["high"] | confidence["medium"]
+        detected = raw_smoke & top2 & (dust == 0)
+        low_detected = raw_smoke & confidence["low"] & (dust == 0)
         groups = components(detected)
+
         dx, dy = abs(float(x[1]-x[0])) / 2, abs(float(y[1]-y[0])) / 2
         geod = Geod(ellps="WGS84")
         features, summaries = [], []
@@ -153,20 +212,39 @@ def decode(body, key):
                 pixel_area = abs(geod.polygon_area_perimeter(plon, plat)[0]) / 1e6
                 area += pixel_area
                 cells.append(f"{int(yi.min())+row}:{int(xi.min())+col}")
-                features.append({"type": "Feature", "properties": {"component": index},
+                features.append({"type": "Feature", "properties": {"component": index, "confidence": "top2"},
                                  "geometry": {"type": "Polygon", "coordinates": [ring]}})
             rows, cols = zip(*group)
             summaries.append({"id": index, "center": [float(np.mean(lat[rows, cols])), float(np.mean(lon[rows, cols]))],
                               "areaKm2": round(area, 2), "cells": cells, "pixels": len(group)})
+
         total = int(region.sum())
-        return {"status": "ok", "at": iso(key_time(key)), "scanEnd": iso(key_time(key, "e")),
-                "source": HOST + key, "product": "GOES-19 ABI-L2-ADPF", "bbox": BBOX,
-                "coverage": {"totalPixels": total, "usablePixels": int(usable.sum()),
-                             "cloudPixels": int((region & (cloud == 1)).sum()),
-                             "ambiguousPixels": int((usable & (smoke == 1) & (dust == 1)).sum()),
-                             "usableFraction": round(int(usable.sum()) / max(total, 1), 3)},
-                "localities": local_coverage(lon, lat, region, usable, detected, smoke, cloud, dust, quality),
-                "components": summaries, "mask": {"type": "FeatureCollection", "features": features}}
+        coverage = {
+            "totalPixels": total,
+            "usablePixels": int(observable.sum()),
+            "observablePixels": int(observable.sum()),
+            "cloudPixels": int((region & (cloud == 1)).sum()),
+            "snowIcePixels": int((region & (snow_ice == 1)).sum()),
+            "invalidSzaPixels": int((region & invalid_sza).sum()),
+            "invalidVzaPixels": int((region & invalid_vza).sum()),
+            "invalidQualityPixels": int((region & invalid_quality).sum()),
+            "rawSmokePixels": int(raw_smoke.sum()),
+            "highConfidenceSmokePixels": int((raw_smoke & confidence["high"]).sum()),
+            "mediumConfidenceSmokePixels": int((raw_smoke & confidence["medium"]).sum()),
+            "lowConfidenceSmokePixels": int((raw_smoke & confidence["low"]).sum()),
+            "lowConfidenceDetectedPixels": int(low_detected.sum()),
+            "ambiguousPixels": int((raw_smoke & (dust == 1)).sum()),
+            "usableFraction": round(int(observable.sum()) / max(total, 1), 3),
+        }
+        return {
+            "status": "ok", "at": iso(key_time(key)), "scanEnd": iso(key_time(key, "e")),
+            "source": HOST + key, "product": "GOES-19 ABI-L2-ADPF", "bbox": BBOX,
+            "qualityModel": {"geometry": geometry_schema, "primarySmoke": "high+medium", "secondarySmoke": "low"},
+            "coverage": coverage,
+            "localities": local_coverage(lon, lat, region, observable, detected, low_detected, smoke, cloud, dust,
+                                         snow_ice, invalid_sza, invalid_vza, invalid_quality, confidence),
+            "components": summaries, "mask": {"type": "FeatureCollection", "features": features},
+        }
 
 
 def get_frame(value, now=None):
@@ -174,12 +252,12 @@ def get_frame(value, now=None):
     try:
         requested = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except (ValueError, AttributeError):
-        raise ValueError("Indica una hora ISO con zona horaria.")
+        raise RequestError("Indica una hora ISO con zona horaria.")
     if requested.tzinfo is None:
-        raise ValueError("Falta la zona horaria.")
+        raise RequestError("Falta la zona horaria.")
     requested = requested.astimezone(UTC)
     if requested > now or requested < now - timedelta(days=8):
-        raise ValueError("El análisis admite los últimos 8 días, sin fechas futuras.")
+        raise RequestError("El análisis admite los últimos 8 días, sin fechas futuras.")
     slot = requested.replace(minute=requested.minute // 10 * 10, second=0, microsecond=0)
     prefix = slot.strftime("ABI-L2-ADPF/%Y/%j/%H/")
     listing = read_url(HOST + "?" + urlencode({"list-type": 2, "prefix": prefix, "max-keys": 100}), 500000)
@@ -197,7 +275,7 @@ class handler(BaseHTTPRequestHandler):
         try:
             value = parse_qs(urlparse(self.path).query).get("time", [""])[0]
             result = get_frame(value)
-        except ValueError as error:
+        except RequestError as error:
             code, result = 400, {"error": str(error)}
         except Exception as error:
             print(json.dumps({"event": "smoke_processing_error", "type": type(error).__name__}), flush=True)

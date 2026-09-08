@@ -1,32 +1,29 @@
 # HUMOSRD
 
-Visor experimental de humo para Santo Domingo. Mapa Leaflet, límites de Santo Domingo y Distrito Nacional, localidades y sitios de residuos identificados, imágenes NASA GIBS GOES-East/VIIRS/MODIS, detecciones FIRMS, advección horaria exploratoria con intervalo y reproducción temporal, y calculadora condicional de PM2.5.
+Análisis experimental de humo en Santo Domingo: clasificación operativa NOAA GOES-19 ADP, seguimiento entre escenas, fuentes candidatas NASA FIRMS, imágenes NASA GIBS y vigilancia hacia comunidades. Hasta 24 h de los últimos 8 días; hora America/Santo_Domingo (UTC−4). No requiere seleccionar un origen.
 
-## Ejecutar y verificar
+## Desarrollo
 
-Node 22+ y npm. `npm ci`, `npm test`, `npm run build`. El resultado está en `dist/`. No hay framework de frontend ni proceso de compilación de JavaScript. Leaflet se sirve localmente después del build. Un servidor estático permite usar imágenes y análisis manual; `/api/fires` necesita un runtime de funciones Vercel. Para integración local completa: Vercel CLI y `vercel dev` con la variable de entorno configurada.
+Node 22+ y Python 3.12+. Ejecutar `npm ci`, `pip install -r requirements.txt`, `npm test`, `python -m unittest discover -s tests -p 'test_*.py'`, `npm run build`. Frontend estático en dist; Leaflet se copia al compilar. Usar `vercel dev` para las API; un servidor solo estático no ejecuta el análisis.
 
-## Vercel (pendiente, no desplegado en esta entrega)
+## Vercel
 
-Importar este repositorio, preset Other. `vercel.json` define `npm run build` y `dist`. La carpeta `api/` contiene una función Node. Añadir `FIRMS_MAP_KEY` como variable privada del servidor. Solicitarla en https://firms.modaps.eosdis.nasa.gov/api/map_key/ . No usar prefijos públicos ni incrustar la clave en HTML. Sin clave, la función devuelve 503 explícito y el resto del visor funciona. No hay datos de demostración presentados como reales.
+Preset Other, build npm run build, salida dist. Las funciones Node conviven con api/smoke.py (60 s); Vercel instala requirements.txt. No cambiar el preset a FastAPI. Configurar FIRMS_MAP_KEY privada desde https://firms.modaps.eosdis.nasa.gov/api/map_key/ . NOAA y las imágenes no requieren clave. Sin FIRMS se analiza humo, pero se declara la limitación de procedencia. No hay datos simulados en producción.
 
-## Integraciones
+## Flujo
 
-- GOES-East ABI GeoColor: GIBS WMTS EPSG:3857, GoogleMapsCompatible_Level7, intervalo de 10 minutos.
-- VIIRS Suomi-NPP/NOAA-20/NOAA-21 y MODIS Terra/Aqua: GIBS reflectancia verdadera, Level9, mosaicos diarios.
-- FIRMS: consulta paralela a VIIRS_SNPP_NRT, VIIRS_NOAA20_NRT, VIIRS_NOAA21_NRT y MODIS_NRT. Para un día local RD se consultan los dos días UTC que lo contienen y luego se filtran las detecciones; rectángulo [-70.4,18.1,-69.2,19.1]. Respuesta parcial identificada; errores no se convierten en cero incendios. Cache CDN 10 min. Se preservan detecciones por sensor/pasada sin sumar su FRP.
-- Open-Meteo: viento horario 10/80/120/180 m, m/s, hora Unix UTC; API pública desde navegador. Todo input y resultado visible se interpreta en RD UTC-4, independientemente del equipo. El span Desde–Hasta admite hasta 24 h y el deslizador recorre la trayectoria cada 10 min.
-- NOAA Fire Temperature/Dust RGB y CIRA son enlaces externos; no clasificación automática. Worldview comparte los datos GIBS ya integrados.
-- Sitios de residuos: Duquesa, Cancino Adentro, San Luis–La Rusa y La Tumba, contrastados con documentación pública y geometrías OpenStreetMap. Estado y precisión se declaran en cada ficha; seleccionar un sitio crea una hipótesis de origen, no una atribución.
+- /api/imagery resuelve intervalos publicados en WMTS. VIIRS/MODIS .jpeg y GOES .png. Al abrir muestra la última escena con su hora real. Fondo Esri de archivo identificado y errores de teselas parciales.
+- /api/smoke?time=ISO descarga ADPF GOES-19 de NOAA, aplica Smoke/Cloud/Dust/DQF, georreferencia y devuelve GeoJSON, componentes, huella km², cobertura y fuente original. Cada 10 min, máximo dos solicitudes simultáneas desde el navegador, cache CDN para escenas procesadas.
+- smoke-core.js sigue regiones consecutivas sin conectar huecos. Cruza FIRMS previo y movimiento observado para candidatos de baja confianza; no llama origen a la primera huella.
+- automatic.js aporta progreso/cancelación, reproducción sincronizada con GeoColor, comunidades bajo píxeles de humo y tres escenarios de viento a 80 m para hasta cinco plumas finales. Exportación JSON con fuentes.
+- Herramientas manuales de viento/emisiones quedan en apartados secundarios.
 
-## Alcance científico
+## NASA ARSET y alcance
 
-La trayectoria usa viento temporal en un solo punto, no transporte 3D. La búsqueda de candidatos es una coincidencia espacio-temporal heurística, no atribución ni probabilidad. La calculadora exige factores documentados y asume FRP constante; no mide emisiones. Ver `dist/methodology.html` para ecuaciones, umbrales, limitaciones y fuentes.
+Referencia del usuario: https://www.youtube.com/watch?v=2Us91BGL3Q4 . ARSET aporta formación, no es una API o modelo instalado. Se integran FIRMS/GIBS de NASA y ADP de NOAA. No se afirma aval institucional ni entrenamiento de una IA propia. Fuentes y reglas en dist/methodology.html.
 
-## Datos geográficos
+Las pruebas cubren calidad, huecos, candidatos, georreferenciación, hora RD, FIRMS parcial y unidades; no validan precisión científica local. ADP tiene resolución kilométrica y puede omitir quemas pequeñas, humo nocturno o nublado. Huella no equivale a PM2.5. Centroides cambian al crecer/dividirse una pluma.
 
-`dist/provinces.geojson`: extracción de Santo Domingo y Distrito Nacional desde geoBoundaries DOM ADM1, revisión 9469f09, Natural Earth, dominio público, año representado 2022. Límites generalizados, no catastrales. Localidades aproximadas para navegación; base OSM con atribución. Los nombres no representan incidentes activos.
+Los escenarios son advección horizontal, no HYSPLIT ni AQI. No hay notificaciones automáticas. Para operación comunitaria hacen falta sensores de superficie, validación local y dispersión. Un intervalo de 24 h procesa hasta 144 archivos y puede tardar varios minutos; dimensionar cuotas de Vercel y proveedores para el tráfico.
 
-## Validación y límites operativos
-
-`npm test` cubre dirección/unidades de transporte, fecha y parseo FIRMS, emisiones, ausencia de clave y fallos parciales del proveedor con mocks. Las pruebas no validan precisión científica. Debe completarse QA en navegador tras despliegue, probar la clave real, comprobar CORS/cobertura GIBS y verificar hora de observación. El servicio no está calibrado para emergencias. Para operación sostenida/comercial: proveedor de teselas y plan meteorológico adecuados, monitoreo, cuotas y almacenamiento histórico. No se incluye clasificación automática ni inferencia de masa por imagen.
+Límites geoBoundaries DOM ADM1, revisión 9469f09, Natural Earth, dominio público, 2022. Duquesa está cartografiado por nombre; los demás sitios de residuos son referencias aproximadas, no usadas en atribución automática.

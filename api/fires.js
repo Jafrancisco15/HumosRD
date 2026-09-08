@@ -4,18 +4,22 @@ export default async function handler(req,res) {
   if(req.method!=='GET') return res.status(405).json({error:'Método no permitido'});
   const date=String(req.query.date||'');
   if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isFinite(Date.parse(date))||new Date(date).toISOString().slice(0,10)!==date) return res.status(400).json({error:'Fecha inválida'});
-  const age=Date.now()-Date.parse(date);
+  const age=Date.now()-Date.parse(`${date}T04:00:00Z`);
   if(age< -86400000||age>9*86400000) return res.status(400).json({error:'Selecciona una fecha de los últimos 9 días.'});
   const key=process.env.FIRMS_MAP_KEY;
   if(!key) return res.status(503).json({error:'Falta configurar FIRMS_MAP_KEY en el servidor. Las imágenes y el análisis manual siguen disponibles.',code:'MISSING_KEY'});
-  const results=await Promise.all(sensors.map(async sensor=>{
+  const nextDate=new Date(Date.parse(date)+86400000).toISOString().slice(0,10);
+  const requests=sensors.flatMap(sensor=>[date,nextDate].map(utcDate=>({sensor,utcDate})));
+  const results=await Promise.all(requests.map(async ({sensor,utcDate})=>{
     try {
-      const r=await fetch(`https://firms.modaps.eosdis.nasa.gov/api/area/csv/${encodeURIComponent(key)}/${sensor}/${BBOX.join(',')}/1/${date}`,{signal:AbortSignal.timeout(18000)});
+      const r=await fetch(`https://firms.modaps.eosdis.nasa.gov/api/area/csv/${encodeURIComponent(key)}/${sensor}/${BBOX.join(',')}/1/${utcDate}`,{signal:AbortSignal.timeout(18000)});
       if(!r.ok) throw new Error('upstream');
-      return {sensor,status:'ok',fires:parseFirms(await r.text(),sensor)};
-    }catch{return {sensor,status:'unavailable',fires:[]};}
+      return {sensor,utcDate,status:'ok',fires:parseFirms(await r.text(),sensor)};
+    }catch{return {sensor,utcDate,status:'unavailable',fires:[]};}
   }));
-  const ok=results.filter(x=>x.status==='ok').length;
+  const sources=sensors.map(sensor=>{const count=results.filter(x=>x.sensor===sensor&&x.status==='ok').length;return {sensor,status:count===2?'ok':count===1?'partial':'unavailable'};});
+  const ok=sources.filter(x=>x.status!=='unavailable').length;
+  const fires=results.flatMap(x=>x.fires).filter(f=>new Date(f.at-4*3600000).toISOString().slice(0,10)===date);
   res.setHeader('Cache-Control',ok?'public, s-maxage=600, stale-while-revalidate=120':'no-store');
-  return res.status(ok?200:502).json({date,fetchedAt:new Date().toISOString(),partial:ok<4,sources:results.map(({sensor,status})=>({sensor,status})),fires:results.flatMap(x=>x.fires),...(ok?{}:{error:'FIRMS no respondió correctamente. Comprueba la clave o intenta más tarde.'})});
+  return res.status(ok?200:502).json({date,timeZone:'America/Santo_Domingo',utcDates:[date,nextDate],fetchedAt:new Date().toISOString(),partial:sources.some(x=>x.status!=='ok'),sources,fires,...(ok?{}:{error:'FIRMS no respondió correctamente. Comprueba la clave o intenta más tarde.'})});
 }

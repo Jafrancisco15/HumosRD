@@ -11,7 +11,17 @@ test('API explicitly distinguishes missing key, partial provider failure and emp
     let r=response();await handler(req,r);assert.equal(r.code,503);assert.equal(r.body.code,'MISSING_KEY');
     process.env.FIRMS_MAP_KEY='test-only';
     globalThis.fetch=async url=>{if(url.includes('NOAA20'))throw new Error('simulated');return {ok:true,text:async()=>'latitude,longitude,frp,confidence,acq_date,acq_time\n'};};
-    r=response();await handler(req,r);assert.equal(r.code,200);assert.equal(r.body.partial,true);assert.equal(r.body.fires.length,0);assert.equal(r.body.sources.filter(s=>s.status==='unavailable').length,1);
+    r=response();await handler(req,r);assert.equal(r.code,200);assert.equal(r.body.partial,true);assert.equal(r.body.fires.length,0);assert.equal(r.body.sources.filter(s=>s.status==='unavailable').length,1);assert.equal(r.body.utcDates.length,2);
     globalThis.fetch=async()=>({ok:false});r=response();await handler(req,r);assert.equal(r.code,502);assert.ok(r.body.error);
+  }finally{if(old===undefined)delete process.env.FIRMS_MAP_KEY;else process.env.FIRMS_MAP_KEY=old;globalThis.fetch=originalFetch;}
+});
+test('API returns one complete Dominican local day across two UTC dates',async()=>{
+  const old=process.env.FIRMS_MAP_KEY,originalFetch=globalThis.fetch;
+  try{
+    process.env.FIRMS_MAP_KEY='test-only';
+    const date=new Date(Date.now()-4*3600000).toISOString().slice(0,10),next=new Date(Date.parse(date)+86400000).toISOString().slice(0,10);
+    globalThis.fetch=async url=>{const utcDate=url.endsWith(next)?next:date;return {ok:true,text:async()=>`latitude,longitude,frp,confidence,acq_date,acq_time\n18.5,-69.9,10,n,${utcDate},0330\n18.5,-69.9,10,n,${utcDate},0430`};};
+    const r=response();await handler({method:'GET',query:{date}},r);assert.equal(r.code,200);assert.equal(r.body.partial,false);assert.equal(r.body.fires.length,8);
+    assert.ok(r.body.fires.every(f=>new Date(f.at-4*3600000).toISOString().slice(0,10)===date));
   }finally{if(old===undefined)delete process.env.FIRMS_MAP_KEY;else process.env.FIRMS_MAP_KEY=old;globalThis.fetch=originalFetch;}
 });

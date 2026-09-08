@@ -1,6 +1,6 @@
 # HUMOSRD
 
-Visor experimental de humo para Santo Domingo. Mapa Leaflet, límites de Santo Domingo y Distrito Nacional, localidades, imágenes NASA GIBS GOES-East/VIIRS/MODIS, detecciones FIRMS, advección horaria exploratoria y calculadora condicional de PM2.5.
+Visor experimental de humo para Santo Domingo. Mapa Leaflet, límites de Santo Domingo y Distrito Nacional, localidades y sitios de residuos identificados, imágenes NASA GIBS GOES-East/VIIRS/MODIS, detecciones FIRMS, advección horaria exploratoria con intervalo y reproducción temporal, y calculadora condicional de PM2.5.
 
 ## Ejecutar y verificar
 
@@ -14,9 +14,10 @@ Importar este repositorio, preset Other. `vercel.json` define `npm run build` y 
 
 - GOES-East ABI GeoColor: GIBS WMTS EPSG:3857, GoogleMapsCompatible_Level7, intervalo de 10 minutos.
 - VIIRS Suomi-NPP/NOAA-20/NOAA-21 y MODIS Terra/Aqua: GIBS reflectancia verdadera, Level9, mosaicos diarios.
-- FIRMS: consulta paralela a VIIRS_SNPP_NRT, VIIRS_NOAA20_NRT, VIIRS_NOAA21_NRT y MODIS_NRT. Fecha UTC, un día, rectángulo [-70.4,18.1,-69.2,19.1]. Respuesta parcial identificada; errores no se convierten en cero incendios. Cache CDN 10 min. Se preservan detecciones por sensor/pasada sin sumar su FRP.
-- Open-Meteo: viento horario 10/80/120/180 m, m/s, hora Unix UTC; API pública desde navegador. Hora del analista interpretada siempre como RD UTC-4, independientemente de su equipo.
+- FIRMS: consulta paralela a VIIRS_SNPP_NRT, VIIRS_NOAA20_NRT, VIIRS_NOAA21_NRT y MODIS_NRT. Para un día local RD se consultan los dos días UTC que lo contienen y luego se filtran las detecciones; rectángulo [-70.4,18.1,-69.2,19.1]. Respuesta parcial identificada; errores no se convierten en cero incendios. Cache CDN 10 min. Se preservan detecciones por sensor/pasada sin sumar su FRP.
+- Open-Meteo: viento horario 10/80/120/180 m, m/s, hora Unix UTC; API pública desde navegador. Todo input y resultado visible se interpreta en RD UTC-4, independientemente del equipo. El span Desde–Hasta admite hasta 24 h y el deslizador recorre la trayectoria cada 10 min.
 - NOAA Fire Temperature/Dust RGB y CIRA son enlaces externos; no clasificación automática. Worldview comparte los datos GIBS ya integrados.
+- Sitios de residuos: Duquesa, Cancino Adentro, San Luis–La Rusa y La Tumba, contrastados con documentación pública y geometrías OpenStreetMap. Estado y precisión se declaran en cada ficha; seleccionar un sitio crea una hipótesis de origen, no una atribución.
 
 ## Alcance científico
 

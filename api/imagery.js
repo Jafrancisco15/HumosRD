@@ -24,6 +24,7 @@ export function resolveTime(xml, name, requested) {
   return best;
 }
 export default async function handler(req, res) {
+  if(req.method!=='GET') return res.status(405).json({error:'Método no permitido'});
   const { layer='goes', time, latest } = req.query;
   if (!names[layer] || (latest !== 'true' && !Number.isFinite(Date.parse(time)))) return res.status(400).json({error:'Capa u hora no válida.'});
   try {
@@ -34,7 +35,6 @@ export default async function handler(req, res) {
     }
     const [name, zoom, ext] = names[layer], requested = latest === 'true' ? Date.now() : Date.parse(time);
     const at = resolveTime(cached.xml, name, requested);
-    // Do not silently substitute a stale observation for a requested scene.
     if (latest !== 'true' && requested-at > (layer === 'goes' ? 30*60000 : 86400000)) return res.status(200).json({status:'unavailable', latestBefore:new Date(at).toISOString(), error:'No hay imagen cercana a la hora solicitada.'});
     const stamp = new Date(at).toISOString(), dimension = layer === 'goes' ? stamp.replace('.000Z','Z') : stamp.slice(0,10);
     res.setHeader('Cache-Control','public, s-maxage=120');

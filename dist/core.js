@@ -11,8 +11,11 @@ export function destination(p,bearing,km) {
 }
 // Hourly winds at a single grid point; not a 3D dispersion model.
 export function trajectory(origin, start, hours, hourly, level='80m', backwards=false, offset=0, scale=1) {
+  if(!Number.isFinite(hours)||hours<=0) throw new Error('La duración debe ser positiva.');
+  const steps=Math.round(hours*6);
+  if(Math.abs(steps-hours*6)>1e-9) throw new Error('La duración debe expresarse en pasos completos de 10 minutos.');
   let p=[...origin]; const points=[p], times=[start];
-  for(let s=0;s<hours*6;s++) {
+  for(let s=0;s<steps;s++) {
     const t=start+(backwards?-1:1)*(s+.5)*600000;
     const i=hourly.time.findIndex(x=>Math.floor(x/3600000)===Math.floor(t/3600000));
     const speed=hourly['wind_speed_'+level]?.[i], dir=hourly['wind_direction_'+level]?.[i];

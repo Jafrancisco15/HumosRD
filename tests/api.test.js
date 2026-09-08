@@ -4,6 +4,15 @@ import firesHandler from '../api/fires.js';
 import imageryHandler from '../api/imagery.js';
 function response(){return {code:200,headers:{},status(c){this.code=c;return this;},setHeader(k,v){this.headers[k]=v;},json(body){this.body=body;return this;}};}
 test('APIs reject invalid method/date',async()=>{let r=response();await firesHandler({method:'POST',query:{}},r);assert.equal(r.code,405);r=response();await firesHandler({method:'GET',query:{date:'2026-02-31'}},r);assert.equal(r.code,400);r=response();await imageryHandler({method:'POST',query:{}},r);assert.equal(r.code,405);});
+test('FIRMS historical dates degrade gracefully without requiring a key',async()=>{
+  const old=process.env.FIRMS_MAP_KEY;
+  try{
+    delete process.env.FIRMS_MAP_KEY;
+    const date=new Date(Date.now()-40*86400000).toISOString().slice(0,10),r=response();
+    await firesHandler({method:'GET',query:{date}},r);
+    assert.equal(r.code,200);assert.equal(r.body.historicalUnavailable,true);assert.equal(r.body.fires.length,0);assert.ok(r.body.sources.every(s=>s.status==='outside_nrt_window'));
+  }finally{if(old===undefined)delete process.env.FIRMS_MAP_KEY;else process.env.FIRMS_MAP_KEY=old;}
+});
 test('FIRMS API distinguishes missing key, partial provider failure and empty coverage',async()=>{
   const old=process.env.FIRMS_MAP_KEY,originalFetch=globalThis.fetch;
   try{

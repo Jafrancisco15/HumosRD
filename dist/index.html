@@ -4,7 +4,7 @@
 <main>
 <aside class="controls">
 <div class="section-title"><span>01 / OBSERVAR</span><button id="refresh" type="button">Actualizar</button></div>
-<h1>¿De dónde viene el humo?</h1><p class="muted">Detección automática de humo GOES, seguimiento entre escenas y búsqueda de fuentes con NASA FIRMS.</p>
+<h1>¿De dónde viene el humo?</h1><p class="muted">Detección automática de humo GOES, seguimiento entre escenas y búsqueda de fuentes con NASA FIRMS cuando su ventana NRT está disponible.</p>
 <label for="date">Fecha de observación · hora RD (UTC−4)</label><input id="date" type="date">
 <label for="layer">Imagen satelital</label><select id="layer"><option value="goes" selected>GOES-East · GeoColor</option><option value="snpp">VIIRS · Suomi-NPP</option><option value="n20">VIIRS · NOAA-20</option><option value="n21">VIIRS · NOAA-21</option><option value="terra">MODIS · Terra</option><option value="aqua">MODIS · Aqua</option><option value="none">Solo imagen de archivo · Esri</option></select>
 <div id="goes-time" hidden><label for="time">Hora GOES · RD (UTC−4)</label><input id="time" type="time" step="600"><div class="button-row"><button id="previous">−10 min</button><button id="play">Reproducir</button><button id="next">+10 min</button></div></div>
@@ -22,7 +22,7 @@
 <button id="today-morning">Hoy desde las 06:00 RD</button>
 <label for="locality-focus">Comunidad que deseas vigilar</label><select id="locality-focus" aria-describedby="local-coverage"></select>
 <p id="local-coverage" class="status" role="status">Sin análisis local. Los reportes de humo en tierra no quedan descartados por el satélite.</p>
-<p class="fine">Hasta 24 h de los últimos 8 días. Escenas cada 10 min. El procesamiento puede tardar varios minutos.</p>
+<p class="fine">Hasta 24 h por análisis. Puedes elegir fechas históricas; GOES ADP/GIBS se consultan si el proveedor conserva la escena. FIRMS NRT y los escenarios de viento solo acompañan fechas recientes.</p>
 <button class="primary" id="auto-analyze">Analizar humo automáticamente</button><button id="auto-cancel" hidden>Cancelar análisis</button>
 <p id="auto-status" class="status" role="status">No necesitas marcar un origen. Se consultará el área regional completa.</p>
 <label><input id="show-smoke" type="checkbox" checked> Resaltar humo detectado</label>
@@ -30,8 +30,9 @@
 <p id="local-frame" class="fine" role="status"></p>
 <div id="auto-results" aria-live="polite"></div>
 <div class="section-title release-title"><span>COMUNIDADES / VIGILANCIA</span></div><p id="community-status" class="status">Sin análisis. No es una medición de contaminación al nivel de la calle.</p><div id="communities"></div>
-<details><summary>Cómo se identifica el humo</summary><p>NOAA clasifica píxeles de humo con el producto ABI ADP. Se aceptan detecciones de calidad alta o media, sin nubes ni polvo simultáneo; después se siguen zonas contiguas entre escenas. La línea une sus centros y puede cambiar cuando la pluma crece.</p><p>NASA FIRMS aporta focos térmicos para buscar fuentes compatibles. La primera detección de humo no equivale al lugar de ignición. No se atribuye un origen a un vertedero solo por cercanía.</p><p>La vigilancia hacia comunidades usa escenarios de viento a 80 m durante 3 h. No mide PM2.5 ni la altura real del humo. No ver una pluma pequeña, nocturna o cubierta por nubes no significa aire limpio.</p></details>
+<details><summary>Cómo se identifica el humo</summary><p>NOAA clasifica píxeles de humo con el producto ABI ADP. Se aceptan detecciones de calidad alta o media, sin nubes ni polvo simultáneo; después se siguen zonas contiguas entre escenas. La línea une sus centros y puede cambiar cuando la pluma crece.</p><p>NASA FIRMS aporta focos térmicos para buscar fuentes compatibles cuando la fecha entra en la ventana NRT. En fechas históricas fuera de esa ventana, HumosRD continúa con GOES/GIBS y declara FIRMS como no disponible; nunca lo interpreta como cero incendios.</p><p>La vigilancia hacia comunidades usa escenarios de viento a 80 m durante 3 h solo dentro de la ventana reciente del proveedor meteorológico. No mide PM2.5 ni la altura real del humo. No ver una pluma pequeña, nocturna o cubierta por nubes no significa aire limpio.</p></details>
 <details id="manual-tools"><summary>Herramientas manuales opcionales</summary>
+<p class="fine">Las trayectorias manuales dependen de viento reciente y no se extienden al archivo histórico. Para fechas antiguas utiliza el análisis automático satelital.</p>
 <label for="mode">Punto seleccionado como</label><select id="mode"><option value="back">Lugar donde observo humo · buscar origen</option><option value="forward">Fuente candidata · proyectar transporte</option></select>
 <div class="two"><div><label for="start">Desde · hora RD</label><input id="start" type="datetime-local" step="600"></div><div><label for="end">Hasta · hora RD</label><input id="end" type="datetime-local" step="600"></div></div>
 <label for="height">Altura del viento</label><select id="height"><option value="10m">10 m</option><option value="80m" selected>80 m</option><option value="120m">120 m</option><option value="180m">180 m</option></select>

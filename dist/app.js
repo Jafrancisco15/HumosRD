@@ -5,7 +5,7 @@ const $=id=>document.getElementById(id), fmt=n=>new Intl.NumberFormat('es-DO',{m
 const rd=t=>new Date(t).toLocaleString('es-DO',{timeZone:'America/Santo_Domingo',dateStyle:'short',timeStyle:'short'});
 const inputRD=t=>new Date(t-4*3600000).toISOString().slice(0,16);
 const recent=new Date(Math.floor((Date.now()-40*60000)/600000)*600000);
-$('date').value=inputRD(+recent).slice(0,10); $('date').max=inputRD(Date.now()).slice(0,10); $('date').min=inputRD(Date.now()-8*86400000).slice(0,10);
+$('date').value=inputRD(+recent).slice(0,10); $('date').max=inputRD(Date.now()).slice(0,10);
 $('time').value=inputRD(+recent).slice(11,16); $('start').value=inputRD(Date.now()-3*3600000); $('end').value=inputRD(Date.now());
 let map, selected=null, selectionMarker, imageLayer, fires=[], fireRun=0, analysisRun=0, playback=null, analysisPlayback=null, analysisPath=null, plumeMarker=null;
 let firesLayer,landfillLayer,boundaryLayer,pathLayer, imageryRun=0;
@@ -71,6 +71,11 @@ async function loadFires(){
     const r=await limitedFetch(`/api/fires?date=${encodeURIComponent($('date').value)}`,{signal:AbortSignal.timeout(25000)});
     if(!(r.headers.get('content-type')||'').includes('application/json'))throw new Error('Los focos automáticos necesitan el servidor de Vercel y FIRMS_MAP_KEY.');
     const data=await r.json();if(!r.ok)throw new Error(data.error||'No se pudieron consultar los focos.');if(run!==fireRun)return;
+    if(data.historicalUnavailable){
+      $('fires-status').textContent=`Fecha histórica: FIRMS NRT no se consulta fuera de su ventana reciente de ${data.windowDays||9} días. Esto no afecta las imágenes GIBS ni el análisis GOES ADP cuando existe una escena archivada.`;
+      for(const s of data.sources){const el=document.createElement('div');el.textContent=`${s.sensor.replace('_NRT','')}: fuera de ventana NRT`;$('sources').append(el);}
+      return;
+    }
     fires=data.fires;
     $('fires-status').textContent=fires.length?`${fires.length} detecciones en el área regional · día local ${data.date} RD${data.partial?' · COBERTURA PARCIAL':''}. Consulta: ${rd(Date.parse(data.fetchedAt))} RD. No equivale a número de incendios.`:`0 focos térmicos detectados · día local ${data.date} RD${data.partial?' · COBERTURA PARCIAL':''}. Esto no descarta una quema pequeña, de combustión lenta, cubierta o ocurrida entre pasadas de VIIRS/MODIS.`;
     for(const s of data.sources){const el=document.createElement('div');el.textContent=`${s.sensor.replace('_NRT','')}: ${s.status==='ok'?'consultado':s.status==='partial'?'cobertura parcial':'no disponible'}`;$('sources').append(el);}
@@ -98,7 +103,7 @@ async function analyze(){
   stopAnalysis();analysisPath=null;$('timeline').hidden=true;
   if(!Number.isFinite(begin)||!Number.isFinite(end)||end<=begin){$('analysis-status').textContent='El intervalo debe tener una hora “Desde” anterior a “Hasta”.';return;}
   if(hours>24){$('analysis-status').textContent='El span máximo por análisis es de 24 horas.';return;}
-  if(begin<Date.now()-8*86400000||end>Date.now()+86400000){$('analysis-status').textContent='El intervalo debe estar entre los últimos 8 días y las próximas 24 horas.';return;}
+  if(begin<Date.now()-10*86400000||end>Date.now()+86400000){$('analysis-status').textContent='Las herramientas manuales de viento usan la ventana reciente del proveedor (hasta 10 días atrás y 24 h hacia adelante). Para fechas más antiguas usa el análisis satelital histórico.';return;}
   $('analyze').disabled=true;$('analysis-status').textContent='Consultando viento horario y calculando…';
   try{
     const vars=`wind_speed_${level},wind_direction_${level}`;

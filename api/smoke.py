@@ -1,5 +1,5 @@
 """NOAA GOES-19 ADP, cropped to Santo Domingo. No API key required."""
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse, urlencode
 from urllib.request import urlopen
@@ -256,15 +256,15 @@ def get_frame(value, now=None):
     if requested.tzinfo is None:
         raise RequestError("Falta la zona horaria.")
     requested = requested.astimezone(UTC)
-    if requested > now or requested < now - timedelta(days=8):
-        raise RequestError("El análisis admite los últimos 8 días, sin fechas futuras.")
+    if requested > now:
+        raise RequestError("No se pueden analizar fechas futuras.")
     slot = requested.replace(minute=requested.minute // 10 * 10, second=0, microsecond=0)
     prefix = slot.strftime("ABI-L2-ADPF/%Y/%j/%H/")
     listing = read_url(HOST + "?" + urlencode({"list-type": 2, "prefix": prefix, "max-keys": 100}), 500000)
     keys = [el.text for el in ET.fromstring(listing).iter() if el.tag.endswith("}Key")]
-    keys = [key for key in keys if slot <= key_time(key) < slot + timedelta(minutes=10)]
+    keys = [key for key in keys if slot <= key_time(key) < slot + (datetime.min.replace(tzinfo=UTC)-datetime.min.replace(tzinfo=UTC)).replace()]
     if not keys:
-        return {"status": "unavailable", "requestedAt": iso(slot), "reason": "NOAA aún no publica esta escena o existe un hueco de observación."}
+        return {"status": "unavailable", "requestedAt": iso(slot), "reason": "NOAA no publica una escena ADP para esa hora o existe un hueco de observación. En fechas anteriores a la disponibilidad de GOES-19 esto es esperado."}
     key = sorted(keys)[-1]
     return decode(read_url(HOST + key, 20_000_000), key)
 

@@ -1,5 +1,22 @@
 import {distance} from './core.js';
 export const STEP = 600000;
+export function summarizeLocality(frames, name) {
+  const samples=frames.filter(f=>f.status==='ok').map(f=>({at:f.at,local:f.localities?.find(l=>l.name===name)})).filter(s=>s.local);
+  const useful=samples.filter(s=>s.local.usablePixels>0), smoke=samples.filter(s=>s.local.detectedPixels>0);
+  const coverage=frames.length?samples.reduce((sum,s)=>sum+s.local.usableFraction,0)/frames.length:0;
+  return {name,requestedFrames:frames.length,diagnosticFrames:samples.length,usefulFrames:useful.length,
+    smokeFrames:smoke.length,coverage,cloudFrames:samples.filter(s=>s.local.cloudPixels>0).length,
+    invalidQualityFrames:samples.filter(s=>s.local.invalidQualityPixels>0).length,
+    verdict:smoke.length?'smoke_detected':!useful.length?'unobservable':'not_confirmed',
+    lastDetection:smoke.at(-1)?.at||null};
+}
+export function observationVerdict(frames) {
+  const valid=frames.filter(f=>f.status==='ok');
+  if(!valid.length)return 'SIN DATOS: no se recibió ninguna escena procesable. No se puede evaluar el humo.';
+  if(!valid.some(f=>f.coverage.usablePixels>0))return 'SIN OBSERVACIÓN ÚTIL: las escenas no permiten evaluar humo. No se puede confirmar ni descartar el episodio; los reportes en tierra siguen pendientes de contraste.';
+  if(!valid.some(f=>f.components.length))return 'SIN CONFIRMACIÓN SATELITAL en los píxeles evaluables. No descarta humo local, pequeño o cubierto.';
+  return 'HUMO DETECTADO: revisa las huellas, la cobertura y las fuentes candidatas.';
+}
 export function frameSlots(begin, end) {
   if (!Number.isFinite(begin) || !Number.isFinite(end) || end <= begin || end-begin > 86400000) throw new Error('Elige un intervalo de hasta 24 horas, con Desde anterior a Hasta.');
   // Whole 10-minute acquisitions inside the requested span; no observations outside it.

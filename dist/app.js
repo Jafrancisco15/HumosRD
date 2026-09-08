@@ -8,7 +8,7 @@ $('date').value=inputRD(+recent).slice(0,10); $('date').max=inputRD(Date.now()).
 $('time').value=inputRD(+recent).slice(11,16); $('start').value=inputRD(Date.now()-3*3600000); $('end').value=inputRD(Date.now());
 let map, selected=null, selectionMarker, imageLayer, fires=[], fireRun=0, analysisRun=0, playback=null, analysisPlayback=null, analysisPath=null, plumeMarker=null;
 let firesLayer,landfillLayer,boundaryLayer,pathLayer, imageryRun=0;
-const places=[['Santo Domingo Este',18.49,-69.86],['Santo Domingo Norte',18.57,-69.9],['Santo Domingo Oeste',18.5,-70.0],['Distrito Nacional',18.48,-69.94],['Los Alcarrizos',18.52,-70.02],['Pedro Brand',18.57,-70.09],['Boca Chica',18.45,-69.61],['San Antonio de Guerra',18.56,-69.70],['La Victoria',18.59,-69.85],['La Caleta',18.45,-69.67],['Pantoja',18.53,-69.99],['Hato Nuevo',18.55,-70.06]];
+let places=[];
 const landfills=[
   {name:'Vertedero de Duquesa',lat:18.5626353,lon:-69.9683672,status:'En transformación y cierre progresivo',source:'Ministerio de Medio Ambiente / OpenStreetMap'},
   {name:'Vertedero de Cancino Adentro',lat:18.4916831,lon:-69.80287,status:'Antiguo vertedero y estación de transferencia; estado operativo por verificar',source:'Presidencia RD / OpenStreetMap'},
@@ -125,8 +125,10 @@ async function analyze(){
   }catch(e){if(run===analysisRun)$('analysis-status').textContent=e.message;}
   finally{if(run===analysisRun)$('analyze').disabled=false;}
 }
-function init(){
+async function init(){
   if(!window.L){$('map-error').hidden=false;$('map-error').textContent='No se pudo cargar el mapa. Recarga la página; verifica que se haya ejecutado la compilación.';return;}
+  try{const response=await fetch('/localities.json');if(!response.ok)throw new Error();places=await response.json();}
+  catch{$('map-error').hidden=false;$('map-error').textContent='No se pudo cargar el catálogo de localidades. Recarga para poder analizar las comunidades.';return;}
   map=L.map('map',{zoomControl:true}).setView([18.57,-69.87],10);
   map.createPane('satellite');map.getPane('satellite').style.zIndex=250;
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Imagen de archivo © Esri, Maxar, Earthstar Geographics'}).on('tileerror',()=>{$('map-error').hidden=false;$('map-error').textContent='No se pudo cargar parte de la imagen base. Comprueba tu conexión.';}).addTo(map);

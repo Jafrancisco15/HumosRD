@@ -2,6 +2,6 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "framework": null,
-  "functions": {"api/smoke.py": {"maxDuration": 60}},
+  "functions": {"api/smoke.py": {"maxDuration": 60, "includeFiles": "dist/localities.json"}},
   "headers": [{"source":"/(.*)","headers":[{"key":"X-Content-Type-Options","value":"nosniff"},{"key":"Referrer-Policy","value":"strict-origin-when-cross-origin"}]}]
 }

@@ -7,6 +7,8 @@ import io
 import json
 import re
 import xml.etree.ElementTree as ET
+from pathlib import Path
+from functools import lru_cache
 import h5py
 import numpy as np
 from pyproj import Proj, Geod
@@ -14,6 +16,45 @@ from pyproj import Proj, Geod
 HOST = "https://noaa-goes19.s3.amazonaws.com/"
 BBOX = [-70.4, 18.1, -69.2, 19.1]
 UTC = timezone.utc
+
+
+@lru_cache(maxsize=1)
+def localities():
+    return json.loads((Path(__file__).resolve().parent.parent / "dist/localities.json").read_text())
+
+
+def local_coverage(lon, lat, region, usable, detected, smoke, cloud, dust, quality):
+    """Report observability independently from detection, at community scale."""
+    geod = Geod(ellps="WGS84")
+    result = []
+    for name, point_lat, point_lon in localities():
+        _, _, meters = geod.inv(np.full(lon.shape, point_lon), np.full(lat.shape, point_lat), lon, lat)
+        area = region & (meters <= 3000)
+        count = int(area.sum())
+        nearest = np.unravel_index(np.argmin(np.where(region, meters, np.inf)), lon.shape)
+        if not count:
+            state = "outside"
+        elif cloud[nearest] == 1:
+            state = "cloud"
+        elif not quality[nearest] or smoke[nearest] not in (0, 1):
+            state = "invalid_quality"
+        elif smoke[nearest] == 1 and dust[nearest] == 1:
+            state = "ambiguous"
+        elif detected[nearest]:
+            state = "smoke"
+        elif usable[nearest]:
+            state = "no_detection"
+        else:
+            state = "unavailable"
+        result.append({"name": name, "center": [point_lat, point_lon], "radiusKm": 3,
+                       "totalPixels": count, "usablePixels": int((area & usable).sum()),
+                       "detectedPixels": int((area & detected).sum()), "cloudPixels": int((area & (cloud == 1)).sum()),
+                       "invalidQualityPixels": int((area & ~quality).sum()),
+                       "ambiguousPixels": int((area & (smoke == 1) & (dust == 1)).sum()),
+                       "rawSmokePixels": int((area & (smoke == 1)).sum()),
+                       "usableFraction": round(int((area & usable).sum()) / max(count, 1), 3),
+                       "referenceState": state})
+    return result
 
 
 def read_url(url, limit):
@@ -124,6 +165,7 @@ def decode(body, key):
                              "cloudPixels": int((region & (cloud == 1)).sum()),
                              "ambiguousPixels": int((usable & (smoke == 1) & (dust == 1)).sum()),
                              "usableFraction": round(int(usable.sum()) / max(total, 1), 3)},
+                "localities": local_coverage(lon, lat, region, usable, detected, smoke, cloud, dust, quality),
                 "components": summaries, "mask": {"type": "FeatureCollection", "features": features}}
 
 
@@ -157,7 +199,8 @@ class handler(BaseHTTPRequestHandler):
             result = get_frame(value)
         except ValueError as error:
             code, result = 400, {"error": str(error)}
-        except Exception:
+        except Exception as error:
+            print(json.dumps({"event": "smoke_processing_error", "type": type(error).__name__}), flush=True)
             code, result = 502, {"error": "No se pudo procesar la escena NOAA. Reintenta; no implica ausencia de humo."}
         body = json.dumps(result, allow_nan=False, separators=(",", ":")).encode()
         self.send_response(code)

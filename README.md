@@ -18,7 +18,13 @@ Preset Other, build npm run build, salida dist. Las funciones Node conviven con 
 - automatic.js aporta progreso/cancelación, reproducción sincronizada con GeoColor, comunidades bajo píxeles de humo y tres escenarios de viento a 80 m para hasta cinco plumas finales. Exportación JSON con fuentes.
 - Herramientas manuales de viento/emisiones quedan en apartados secundarios.
 
-## NASA ARSET y alcance
+## Caso real: San Luis, 8 de septiembre de 2026
+
+Se reprodujo en el sitio público el intervalo 06:00–12:10 RD: 37/37 escenas procesadas, ninguna con cobertura regional útil y cero focos FIRMS devueltos. Esto es falta de observación, no una prueba de ausencia del humo reportado por vecinos. Un muestreo independiente de siete NetCDF horarios encontró calidad inválida a las 06:00 y clasificación de nube en San Luis de 07:00 a 12:00. El producto no marcaba humo crudo en esas muestras; relajar filtros propios no recuperaría una pluma que no viene identificada.
+
+Corrección: San Luis se añade al catálogo compartido (antes faltaba); diagnóstico por localidad en radio de 3 km; resultado principal SIN OBSERVACIÓN ÚTIL; acceso al intervalo de hoy desde las 06:00. Datos, fuentes y separación entre la prueba completa y el muestreo local en `docs/validation/san-luis-2026-09-08.json`. La prueba no valida el sistema para detectar quemas pequeñas ni identifica el origen de este episodio.
+
+## Métodos y alcance
 
 Referencia del usuario: https://www.youtube.com/watch?v=2Us91BGL3Q4 . ARSET aporta formación, no es una API o modelo instalado. Se integran FIRMS/GIBS de NASA y ADP de NOAA. No se afirma aval institucional ni entrenamiento de una IA propia. Fuentes y reglas en dist/methodology.html.
 

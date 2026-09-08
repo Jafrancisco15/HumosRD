@@ -5,10 +5,26 @@ import numpy as np
 import io
 import h5py
 from pyproj import Proj
-from api.smoke import components, smoke_quality, get_frame, key_time, decode
+from api.smoke import components, smoke_quality, get_frame, key_time, decode, local_coverage, localities
 
 
 class SmokeTests(unittest.TestCase):
+    def test_san_luis_is_a_community_separate_from_landfill(self):
+        site=next(p for p in localities() if p[0]=='San Luis')
+        self.assertTrue(18.54 < site[1] < 18.58)
+        self.assertTrue(-69.82 < site[2] < -69.78)
+
+    def test_local_diagnostics_separate_cloud_quality_and_usable_negative(self):
+        a=np.ones((1,1),dtype=bool);zero=np.zeros((1,1),dtype=np.int8)
+        lon=np.array([[-69.7994]]);lat=np.array([[18.5591]])
+        with patch('api.smoke.localities',return_value=[['San Luis',18.5591,-69.7994]]):
+            cloudy=local_coverage(lon,lat,a,~a,~a,zero,a,zero,a)[0]
+            invalid=local_coverage(lon,lat,a,~a,~a,zero,zero,zero,~a)[0]
+            clear=local_coverage(lon,lat,a,a,~a,zero,zero,zero,a)[0]
+        self.assertEqual(cloudy['referenceState'],'cloud');self.assertEqual(cloudy['usablePixels'],0)
+        self.assertEqual(invalid['referenceState'],'invalid_quality')
+        self.assertEqual(clear['referenceState'],'no_detection');self.assertEqual(clear['usablePixels'],1)
+
     def test_quality_rejects_low_and_bad(self):
         attrs = {"flag_meanings": b"high_confidence_smoke_detection_qf medium_confidence_smoke_detection_qf low_confidence_smoke_detection_qf bad_smoke_detection_qf",
                  "flag_masks": np.array([12]*4), "flag_values": np.array([0,4,8,12])}

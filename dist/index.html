@@ -19,11 +19,15 @@
 <aside class="analysis">
 <div class="section-title"><span>02 / ANÁLISIS AUTOMÁTICO</span><span class="badge">GOES + FIRMS</span></div>
 <div class="two"><div><label for="auto-start">Desde · hora RD</label><input id="auto-start" type="datetime-local" step="600"></div><div><label for="auto-end">Hasta · hora RD</label><input id="auto-end" type="datetime-local" step="600"></div></div>
+<button id="today-morning">Hoy desde las 06:00 RD</button>
+<label for="locality-focus">Comunidad que deseas vigilar</label><select id="locality-focus" aria-describedby="local-coverage"></select>
+<p id="local-coverage" class="status" role="status">Sin análisis local. Los reportes de humo en tierra no quedan descartados por el satélite.</p>
 <p class="fine">Hasta 24 h de los últimos 8 días. Escenas cada 10 min. El procesamiento puede tardar varios minutos.</p>
 <button class="primary" id="auto-analyze">Analizar humo automáticamente</button><button id="auto-cancel" hidden>Cancelar análisis</button>
 <p id="auto-status" class="status" role="status">No necesitas marcar un origen. Se consultará el área regional completa.</p>
 <label><input id="show-smoke" type="checkbox" checked> Resaltar humo detectado</label>
 <div id="auto-timeline" class="timeline" hidden><div class="timeline-head"><strong>Escenas del intervalo</strong><button id="auto-play">Reproducir</button></div><input id="auto-time" type="range" min="0" max="1" step="1" value="0" aria-label="Escena de humo"><p id="auto-frame" class="fine"></p><a id="frame-source" target="_blank" rel="noopener" hidden>Archivo NOAA de esta escena ↗</a></div>
+<p id="local-frame" class="fine" role="status"></p>
 <div id="auto-results" aria-live="polite"></div>
 <div class="section-title release-title"><span>COMUNIDADES / VIGILANCIA</span></div><p id="community-status" class="status">Sin análisis. No es una medición de contaminación al nivel de la calle.</p><div id="communities"></div>
 <details><summary>Cómo se identifica el humo</summary><p>NOAA clasifica píxeles de humo con el producto ABI ADP. Se aceptan detecciones de calidad alta o media, sin nubes ni polvo simultáneo; después se siguen zonas contiguas entre escenas. La línea une sus centros y puede cambiar cuando la pluma crece.</p><p>NASA FIRMS aporta focos térmicos para buscar fuentes compatibles. La primera detección de humo no equivale al lugar de ignición. No se atribuye un origen a un vertedero solo por cercanía.</p><p>La vigilancia hacia comunidades usa escenarios de viento a 80 m durante 3 h. No mide PM2.5 ni la altura real del humo. No ver una pluma pequeña, nocturna o cubierta por nubes no significa aire limpio.</p></details>

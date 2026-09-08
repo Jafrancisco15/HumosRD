@@ -1,10 +1,27 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {frameSlots,trackSmoke,rankOrigins,observedPlaces} from '../dist/smoke-core.js';
+import {frameSlots,trackSmoke,rankOrigins,observedPlaces,summarizeLocality,observationVerdict} from '../dist/smoke-core.js';
 import {resolveTime} from '../api/imagery.js';
 const t=Date.parse('2026-09-08T14:00:21Z');
 const component=(center=[18.5,-69.9],cells=['1:1'])=>({id:0,center,cells,areaKm2:4,pixels:cells.length});
 const frame=(at,c=component())=>({status:'ok',at:new Date(at).toISOString(),components:[c]});
+test('zero useful coverage is unobservable, never a negative smoke finding',()=>{
+  const f={status:'ok',coverage:{usablePixels:0},components:[],localities:[{name:'San Luis',usablePixels:0,usableFraction:0,detectedPixels:0,cloudPixels:7,invalidQualityPixels:0}]};
+  assert.match(observationVerdict([f]),/^SIN OBSERVACIÓN ÚTIL/);
+  assert.equal(summarizeLocality([f],'San Luis').verdict,'unobservable');
+  assert.match(observationVerdict([{status:'unavailable'}]),/^SIN DATOS/);
+});
+test('regional usable coverage cannot imply San Luis was observed',()=>{
+  const f={status:'ok',coverage:{usablePixels:200},components:[],localities:[{name:'San Luis',usablePixels:0,usableFraction:0,detectedPixels:0,cloudPixels:7,invalidQualityPixels:0}]};
+  assert.equal(summarizeLocality([f],'San Luis').usefulFrames,0);
+  assert.equal(summarizeLocality([f],'San Luis').verdict,'unobservable');
+});
+test('partial and missing local diagnostics do not count as complete coverage',()=>{
+  const f={status:'ok',localities:[{name:'San Luis',usablePixels:5,usableFraction:.5,detectedPixels:0,cloudPixels:5,invalidQualityPixels:0}]};
+  const summary=summarizeLocality([f,{status:'unavailable'}],'San Luis');
+  assert.equal(summary.coverage,.25);assert.equal(summary.verdict,'not_confirmed');
+  f.localities[0].detectedPixels=1;assert.equal(summarizeLocality([f],'San Luis').verdict,'smoke_detected');
+});
 test('RD interval converts to UTC and only includes full scenes',()=>{
   const a=Date.parse('2026-09-08T10:05-04:00'),b=Date.parse('2026-09-08T10:31-04:00');
   assert.deepEqual(frameSlots(a,b),[Date.parse('2026-09-08T14:10Z'),Date.parse('2026-09-08T14:20Z')]);

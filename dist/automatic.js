@@ -1,15 +1,36 @@
 import {distance, trajectory} from './core.js';
-import {frameSlots, trackSmoke, rankOrigins, observedPlaces, STEP} from './smoke-core.js';
+import {frameSlots, trackSmoke, rankOrigins, observedPlaces, STEP, summarizeLocality, observationVerdict} from './smoke-core.js';
 
 export function initAutomatic({map, places, rd, inputRD, showImagery}) {
   const $=id=>document.getElementById(id);
-  const masks=L.layerGroup().addTo(map), paths=L.layerGroup().addTo(map), forecasts=L.layerGroup().addTo(map);
+  const masks=L.layerGroup().addTo(map), paths=L.layerGroup().addTo(map), forecasts=L.layerGroup().addTo(map),localArea=L.layerGroup().addTo(map);
   let controller, frames=[], tracks=[], timer, run=0;
   const end=Math.floor((Date.now()-20*60000)/STEP)*STEP;
-  $('auto-start').value=inputRD(end-3*3600000);$('auto-end').value=inputRD(end);
+  const morning=Date.parse(inputRD(end).slice(0,10)+'T06:00:00-04:00');
+  $('auto-start').value=inputRD(end>morning?morning:end-3*3600000);$('auto-end').value=inputRD(end);
+  for(const [name] of places){const option=document.createElement('option');option.value=name;option.textContent=name;$('locality-focus').append(option);}
+  $('locality-focus').value='San Luis';
+  function resetResults(){cancel();frames=[];tracks=[];masks.clearLayers();paths.clearLayers();forecasts.clearLayers();localArea.clearLayers();$('auto-results').replaceChildren();$('communities').replaceChildren();$('local-frame').textContent='';$('local-coverage').textContent='Intervalo cambiado: sin análisis local actualizado.';$('community-status').textContent='Intervalo cambiado: vuelve a analizar.';$('auto-timeline').hidden=true;$('auto-status').textContent='Intervalo cambiado: pulsa Analizar humo.';}
+  $('today-morning').onclick=()=>{const end=Math.floor((Date.now()-20*60000)/STEP)*STEP,start=Date.parse(inputRD(Date.now()).slice(0,10)+'T06:00:00-04:00');resetResults();$('auto-start').value=inputRD(start);$('auto-end').value=inputRD(end);if(end<=start)$('auto-status').textContent='Todavía no hay escenas completas posteriores a las 06:00 RD de hoy.';};
+  function localSummary(){
+    if(!frames.length)return;
+    const summary=summarizeLocality(frames,$('locality-focus').value);
+    const verdict={smoke_detected:'HUMO DETECTADO EN EL ENTORNO',unobservable:'SIN OBSERVACIÓN LOCAL ÚTIL',not_confirmed:'SIN CONFIRMACIÓN SATELITAL'}[summary.verdict];
+    $('local-coverage').textContent=`${summary.name} · ${verdict}. Radio de evaluación: 3 km, no límite municipal. ${summary.usefulFrames}/${summary.requestedFrames} escenas con algún píxel evaluable; cobertura espacio-tiempo ${Math.round(summary.coverage*100)}%. ${summary.cloudFrames} escenas con píxeles clasificados como nube y ${summary.invalidQualityFrames} con calidad inválida (pueden coincidir). ${summary.smokeFrames?`${summary.smokeFrames} escenas con humo en el entorno.`:'No permite descartar los reportes de humo de la comunidad.'}`;
+  }
+  function localFrame(frame){
+    localArea.clearLayers();
+    const name=$('locality-focus').value,site=places.find(p=>p[0]===name),local=frame?.localities?.find(l=>l.name===name);
+    if(!site)return;
+    const color=!local||local.usablePixels===0?'#ffb35e':local.detectedPixels>0?'#ffe377':'#94b6cb';
+    L.circle(site.slice(1),{radius:3000,color,weight:2,dashArray:'3 6',fillOpacity:.035}).bindTooltip(`${name}: área de diagnóstico de cobertura, no huella de humo`).addTo(localArea);
+    const states={cloud:'píxel de referencia clasificado como nube',invalid_quality:'píxel de referencia con calidad inválida',ambiguous:'píxel ambiguo entre humo y polvo',smoke:'humo detectado en el píxel de referencia',no_detection:'píxel evaluable sin detección',outside:'fuera de cobertura',unavailable:'píxel no evaluable'};
+    $('local-frame').textContent=local?`${name} en esta escena: ${states[local.referenceState]||'estado desconocido'}; ${local.usablePixels}/${local.totalPixels} píxeles útiles en 3 km. ${local.detectedPixels} píxeles de humo aceptados de ${local.rawSmokePixels} marcados como humo antes de filtros.`:`${name}: esta escena no aporta diagnóstico local. No es ausencia de humo.`;
+  }
+  $('locality-focus').onchange=()=>{localSummary();if(frames.length)localFrame(frames[Number($('auto-time').value)]);const site=places.find(p=>p[0]===$('locality-focus').value);if(site)map.setView(site.slice(1),11);};
   for(const id of ['auto-start','auto-end']) {
     $(id).max=inputRD(Date.now());$(id).min=inputRD(Date.now()-8*86400000);
-    $(id).addEventListener('change',()=>{cancel();frames=[];tracks=[];masks.clearLayers();paths.clearLayers();forecasts.clearLayers();$('auto-results').replaceChildren();$('communities').replaceChildren();$('community-status').textContent='Intervalo cambiado: vuelve a analizar.';$('auto-timeline').hidden=true;$('auto-status').textContent='Intervalo cambiado: pulsa Analizar humo.';});
+    $(id).addEventListener('change',resetResults);
   }
   function pause(){clearInterval(timer);timer=null;$('auto-play').textContent='Reproducir';}
   function cancel(){run++;controller?.abort();controller=null;pause();$('auto-analyze').disabled=false;$('auto-cancel').hidden=true;}
@@ -23,6 +44,7 @@ export function initAutomatic({map, places, rd, inputRD, showImagery}) {
   }
   function frameAt(index){
     const frame=frames[Number(index)];if(!frame)return;
+    localFrame(frame);
     masks.clearLayers();paths.clearLayers();$('auto-time').value=index;
     $('frame-source').hidden=true;
     if(frame.status==='ok'){
@@ -53,8 +75,8 @@ export function initAutomatic({map, places, rd, inputRD, showImagery}) {
     let slots;
     try{slots=frameSlots(begin,end);if(begin<Date.now()-8*86400000||end>Date.now())throw new Error('Selecciona fechas de los últimos 8 días, sin horas futuras.');}
     catch(error){$('auto-status').textContent=error.message;return;}
-    frames=[];tracks=[];masks.clearLayers();paths.clearLayers();forecasts.clearLayers();$('auto-results').replaceChildren();$('communities').replaceChildren();$('auto-timeline').hidden=true;
-    $('auto-analyze').disabled=true;$('auto-cancel').hidden=false;$('community-status').textContent='Esperando detecciones del intervalo…';
+    frames=[];tracks=[];masks.clearLayers();paths.clearLayers();forecasts.clearLayers();localArea.clearLayers();$('auto-results').replaceChildren();$('communities').replaceChildren();$('auto-timeline').hidden=true;$('local-frame').textContent='';$('local-coverage').textContent='Evaluando cobertura local…';
+    $('auto-analyze').disabled=true;$('auto-cancel').hidden=false;$('community-status').textContent='Esperando detecciones del intervalo…';$('auto-status').textContent=`Consultando ${slots.length} escenas y focos térmicos…`;
     let next=0,done=0;
     const collected=new Array(slots.length), allFires=[], fireIssues=[];
     const dates=new Set();
@@ -72,7 +94,7 @@ export function initAutomatic({map, places, rd, inputRD, showImagery}) {
       while(next<slots.length&&!signal.aborted){
         const index=next++,time=new Date(slots[index]).toISOString();
         try{
-          const data=await json(`/api/smoke?time=${encodeURIComponent(time)}`,signal);
+          const data=await json(`/api/smoke?time=${encodeURIComponent(time)}&v=2`,signal);
           collected[index]=data.status==='ok'?data:{...data,requestedAt:time};
         }catch(error){if(signal.aborted)return;collected[index]={status:'unavailable',requestedAt:time,reason:error.message};}
         done++;
@@ -83,7 +105,8 @@ export function initAutomatic({map, places, rd, inputRD, showImagery}) {
     frames=collected;tracks=trackSmoke(frames);
     const valid=frames.filter(f=>f.status==='ok'),usable=valid.filter(f=>f.coverage.usablePixels>0),missing=frames.length-valid.length;
     const coverage=valid.reduce((sum,f)=>sum+f.coverage.usableFraction,0)/frames.length;
-    $('auto-status').textContent=`${rd(begin)}–${rd(end)} RD · ${valid.length}/${frames.length} escenas procesadas; ${usable.length} con superficie evaluable. Cobertura espacio-tiempo útil: ${Math.round(coverage*100)}%. ${tracks.length} secuencias de humo${missing?`; ${missing} escenas faltantes`:''}. ${tracks.length?'La continuidad y el origen se evalúan abajo.':'No se identificó humo en los píxeles evaluables; no demuestra ausencia de humo.'}`;
+    $('auto-status').textContent=`${observationVerdict(frames)} ${rd(begin)}–${rd(end)} RD · ${valid.length}/${frames.length} escenas procesadas; ${usable.length} con superficie evaluable. Cobertura espacio-tiempo útil: ${Math.round(coverage*100)}%. ${tracks.length?`${tracks.length} secuencias de humo.`:''}${missing?` ${missing} escenas faltantes.`:''}`;
+    localSummary();
     const results=$('auto-results');
     if(fireIssues.length)textBlock(results,'Procedencia limitada: '+fireIssues.join(' · '));
     if(missing)textBlock(results,`Primera escena faltante: ${frames.find(f=>f.status!=='ok').reason}`,'fine');
@@ -135,7 +158,7 @@ export function initAutomatic({map, places, rd, inputRD, showImagery}) {
     if(token!==run)return;
     // Source candidates remain in a separate layer from scene-specific observed paths.
     for(const f of sourceMarkers)L.circleMarker([f.lat,f.lon],{radius:8,color:'#ff9d5c',fillOpacity:.5}).bindTooltip(`Fuente candidata FIRMS · ${rd(f.at)} RD · confianza baja`).addTo(forecasts);
-    $('community-status').textContent=`${seen.size} localidades con humo detectado sobre su punto de referencia. ${projected} plumas con escenario de 3 h desde la última escena. ${active.length>5?'Se priorizan las 5 plumas de mayor huella. ':''}${windFailures?'Existen fallos del proveedor de viento. ':''}No es un índice de calidad del aire ni una alerta oficial; las horas indicadas corresponden al intervalo analizado.`;
+    $('community-status').textContent=usable.length?`${seen.size} localidades con humo detectado sobre su punto de referencia. ${projected} plumas con escenario de 3 h desde la última escena. ${active.length>5?'Se priorizan las 5 plumas de mayor huella. ':''}${windFailures?'Existen fallos del proveedor de viento. ':''}No es un índice de calidad del aire ni una alerta oficial; las horas indicadas corresponden al intervalo analizado.`:'VIGILANCIA SATELITAL SIN COBERTURA ÚTIL. No es posible evaluar la exposición de las comunidades ni proyectar una pluma observada. Los reportes en tierra deben mantenerse como evidencia independiente pendiente de contraste.';
     const download=document.createElement('button');download.textContent='Descargar análisis y fuentes (JSON)';
     download.onclick=()=>{const blob=new Blob([JSON.stringify({generatedAt:new Date().toISOString(),begin:new Date(begin).toISOString(),end:new Date(end).toISOString(),timeZone:'America/Santo_Domingo',method:'GOES ADP masks + experimental centroid tracking + FIRMS proximity; not validated source attribution',frames,tracks,fires:allFires,fireIssues},null,2)],{type:'application/json'});const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='humosrd-analisis.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};results.append(download);
     $('auto-analyze').disabled=false;$('auto-cancel').hidden=true;

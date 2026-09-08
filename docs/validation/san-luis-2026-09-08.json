@@ -1,0 +1,222 @@
+{
+  "case": "Reporte comunitario de humo en San Luis desde el amanecer; proporcionado por el usuario, no verificado en campo.",
+  "dateRD": "2026-09-08",
+  "referenceCoordinatesSource": "https://mapcarta.com/34658678 (GeoNames 11156500)",
+  "productionBeforeFix": {
+    "url": "https://humos-rd.vercel.app",
+    "commit": "c5f1e372861e4fd611f99aa2e07e2f33633685e8",
+    "beginRD": "2026-09-08T06:00:00-04:00",
+    "endRD": "2026-09-08T12:10:00-04:00",
+    "scenesProcessed": 37,
+    "requestedScenes": 37,
+    "scenesWithUsefulRegionalCoverage": 0,
+    "regionalUsefulCoverage": 0,
+    "firesReturnedByUI": 0
+  },
+  "localDiagnosticSampling": "Siete escenas a intervalos de una hora. La prueba de navegador procesó las 37 escenas; el detalle local independiente siguiente es solo el muestreo horario.",
+  "hourlyDiagnostics": [
+    {
+      "at": "2026-09-08T10:00:21Z",
+      "scanEnd": "2026-09-08T10:09:52Z",
+      "source": "https://noaa-goes19.s3.amazonaws.com/ABI-L2-ADPF/2026/251/10/OR_ABI-L2-ADPF-M6_G19_s20262511000212_e20262511009520_c20262511014380.nc",
+      "regionalCoverage": {
+        "totalPixels": 3164,
+        "usablePixels": 0,
+        "cloudPixels": 0,
+        "ambiguousPixels": 0,
+        "usableFraction": 0.0
+      },
+      "sanLuis": {
+        "name": "San Luis",
+        "center": [
+          18.5591,
+          -69.7994
+        ],
+        "radiusKm": 3,
+        "totalPixels": 7,
+        "usablePixels": 0,
+        "detectedPixels": 0,
+        "cloudPixels": 0,
+        "invalidQualityPixels": 7,
+        "ambiguousPixels": 0,
+        "rawSmokePixels": 0,
+        "usableFraction": 0.0,
+        "referenceState": "invalid_quality"
+      }
+    },
+    {
+      "at": "2026-09-08T11:00:21Z",
+      "scanEnd": "2026-09-08T11:09:52Z",
+      "source": "https://noaa-goes19.s3.amazonaws.com/ABI-L2-ADPF/2026/251/11/OR_ABI-L2-ADPF-M6_G19_s20262511100212_e20262511109520_c20262511114108.nc",
+      "regionalCoverage": {
+        "totalPixels": 3164,
+        "usablePixels": 0,
+        "cloudPixels": 1858,
+        "ambiguousPixels": 0,
+        "usableFraction": 0.0
+      },
+      "sanLuis": {
+        "name": "San Luis",
+        "center": [
+          18.5591,
+          -69.7994
+        ],
+        "radiusKm": 3,
+        "totalPixels": 7,
+        "usablePixels": 0,
+        "detectedPixels": 0,
+        "cloudPixels": 7,
+        "invalidQualityPixels": 0,
+        "ambiguousPixels": 0,
+        "rawSmokePixels": 0,
+        "usableFraction": 0.0,
+        "referenceState": "cloud"
+      }
+    },
+    {
+      "at": "2026-09-08T12:00:21Z",
+      "scanEnd": "2026-09-08T12:09:52Z",
+      "source": "https://noaa-goes19.s3.amazonaws.com/ABI-L2-ADPF/2026/251/12/OR_ABI-L2-ADPF-M6_G19_s20262511200212_e20262511209520_c20262511214341.nc",
+      "regionalCoverage": {
+        "totalPixels": 3164,
+        "usablePixels": 0,
+        "cloudPixels": 2712,
+        "ambiguousPixels": 0,
+        "usableFraction": 0.0
+      },
+      "sanLuis": {
+        "name": "San Luis",
+        "center": [
+          18.5591,
+          -69.7994
+        ],
+        "radiusKm": 3,
+        "totalPixels": 7,
+        "usablePixels": 0,
+        "detectedPixels": 0,
+        "cloudPixels": 7,
+        "invalidQualityPixels": 0,
+        "ambiguousPixels": 0,
+        "rawSmokePixels": 0,
+        "usableFraction": 0.0,
+        "referenceState": "cloud"
+      }
+    },
+    {
+      "at": "2026-09-08T13:00:21Z",
+      "scanEnd": "2026-09-08T13:09:52Z",
+      "source": "https://noaa-goes19.s3.amazonaws.com/ABI-L2-ADPF/2026/251/13/OR_ABI-L2-ADPF-M6_G19_s20262511300212_e20262511309520_c20262511314374.nc",
+      "regionalCoverage": {
+        "totalPixels": 3164,
+        "usablePixels": 0,
+        "cloudPixels": 3040,
+        "ambiguousPixels": 0,
+        "usableFraction": 0.0
+      },
+      "sanLuis": {
+        "name": "San Luis",
+        "center": [
+          18.5591,
+          -69.7994
+        ],
+        "radiusKm": 3,
+        "totalPixels": 7,
+        "usablePixels": 0,
+        "detectedPixels": 0,
+        "cloudPixels": 7,
+        "invalidQualityPixels": 0,
+        "ambiguousPixels": 0,
+        "rawSmokePixels": 0,
+        "usableFraction": 0.0,
+        "referenceState": "cloud"
+      }
+    },
+    {
+      "at": "2026-09-08T14:00:21Z",
+      "scanEnd": "2026-09-08T14:09:52Z",
+      "source": "https://noaa-goes19.s3.amazonaws.com/ABI-L2-ADPF/2026/251/14/OR_ABI-L2-ADPF-M6_G19_s20262511400212_e20262511409520_c20262511414109.nc",
+      "regionalCoverage": {
+        "totalPixels": 3164,
+        "usablePixels": 0,
+        "cloudPixels": 3154,
+        "ambiguousPixels": 0,
+        "usableFraction": 0.0
+      },
+      "sanLuis": {
+        "name": "San Luis",
+        "center": [
+          18.5591,
+          -69.7994
+        ],
+        "radiusKm": 3,
+        "totalPixels": 7,
+        "usablePixels": 0,
+        "detectedPixels": 0,
+        "cloudPixels": 7,
+        "invalidQualityPixels": 0,
+        "ambiguousPixels": 0,
+        "rawSmokePixels": 0,
+        "usableFraction": 0.0,
+        "referenceState": "cloud"
+      }
+    },
+    {
+      "at": "2026-09-08T15:00:21Z",
+      "scanEnd": "2026-09-08T15:09:52Z",
+      "source": "https://noaa-goes19.s3.amazonaws.com/ABI-L2-ADPF/2026/251/15/OR_ABI-L2-ADPF-M6_G19_s20262511500212_e20262511509520_c20262511514127.nc",
+      "regionalCoverage": {
+        "totalPixels": 3164,
+        "usablePixels": 0,
+        "cloudPixels": 3154,
+        "ambiguousPixels": 0,
+        "usableFraction": 0.0
+      },
+      "sanLuis": {
+        "name": "San Luis",
+        "center": [
+          18.5591,
+          -69.7994
+        ],
+        "radiusKm": 3,
+        "totalPixels": 7,
+        "usablePixels": 0,
+        "detectedPixels": 0,
+        "cloudPixels": 7,
+        "invalidQualityPixels": 0,
+        "ambiguousPixels": 0,
+        "rawSmokePixels": 0,
+        "usableFraction": 0.0,
+        "referenceState": "cloud"
+      }
+    },
+    {
+      "at": "2026-09-08T16:00:21Z",
+      "scanEnd": "2026-09-08T16:09:52Z",
+      "source": "https://noaa-goes19.s3.amazonaws.com/ABI-L2-ADPF/2026/251/16/OR_ABI-L2-ADPF-M6_G19_s20262511600212_e20262511609520_c20262511614109.nc",
+      "regionalCoverage": {
+        "totalPixels": 3164,
+        "usablePixels": 0,
+        "cloudPixels": 3163,
+        "ambiguousPixels": 0,
+        "usableFraction": 0.0
+      },
+      "sanLuis": {
+        "name": "San Luis",
+        "center": [
+          18.5591,
+          -69.7994
+        ],
+        "radiusKm": 3,
+        "totalPixels": 7,
+        "usablePixels": 0,
+        "detectedPixels": 0,
+        "cloudPixels": 7,
+        "invalidQualityPixels": 0,
+        "ambiguousPixels": 0,
+        "rawSmokePixels": 0,
+        "usableFraction": 0.0,
+        "referenceState": "cloud"
+      }
+    }
+  ]
+}
